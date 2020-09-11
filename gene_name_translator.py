@@ -9,6 +9,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import Column, String, exc
 from time import sleep
 import random
+from sys import stderr
 
 Base = declarative_base()
 
@@ -134,10 +135,10 @@ def submit_db_batch(engine, batch, retry, delay = 0):
                     submit_db_batch(engine, fields_list, retry - 1, backoff)
                 #something else went wrong, log exception and add to failures
                 else:
-                    handle_error(e, fields_list)
+                    handle_failure(e, fields_list)
             #catch anything else and count as failure
             except Exception as e:
-                handle_error(e, fields_list)
+                handle_failure(e, fields_list)
 
 
 
@@ -156,7 +157,7 @@ def exec_batch(engine, batch, retry, throttle, t_exec):
         e = f.exception()
         with console_lock:
             if e is not None:
-                print(e, file=sys.stderr)
+                print(e, file=stderr)
         complete_batches += 1
         with console_lock:
             print("Completed %d batches" % complete_batches)
@@ -239,7 +240,8 @@ def main():
                 #execute whatever is left over as a final batch
                 exec_batch(engine, batch, retry_limit, throttle, t_exec)
             print("Complete!")
-            
+    except Exception as e:
+        print(e, file=stderr)
     finally:
         db_connect.cleanup_db_engine()
 
