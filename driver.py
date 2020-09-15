@@ -44,6 +44,13 @@ p_executor.submit(getData, gpl, cache, retry, out_file_gpl, out_file_row, gpl_lo
 p_max = 5
 t_max = 5
 
+api_base = "http://localhost:5000"
+endpoints = {
+    sym2info: "/api/v1/values/gene_info",
+    gpl2gse: "/api/v1/values/gpl_gse",
+    gse2vals: "/api/v1/values/gse_values"
+}
+
 def get_stats_from_genes(genes):
     p_pool = ProcessPoolExecutor(p_max)
     for gene in genes:
@@ -52,13 +59,14 @@ def get_stats_from_genes(genes):
 
 def get_stats_from_gene(gene):
     t_pool = ThreadPoolExecutor(t_max)
-    
+    query = "%s%s" % (api_base, endpoints["sym2info"])
+    gene_info = requests.get()
 
 
 
 
 def main():
-    f
+    r
 
 
 
