@@ -99,7 +99,7 @@ class FTPHandler:
         else:
             __handle_data_r(data, row_handler, retry)
 
-    def __handle_data_r(data, row_handler, retry, last_error = None):
+    def __handle_data_r(self, data, row_handler, retry, last_error = None):
         if retry < 0:
             #raise retry limit exceeded error
             raise RuntimeError("An error has occured while processing data. Last error: %s" % str(last_error))
