@@ -4,6 +4,7 @@ import requests
 from db_connect import DBConnector
 import sqlite3
 from mpi4py.futures import MPIPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 
 class QueryParamGen():
     def __init__(self, source, nodata):
@@ -44,15 +45,8 @@ def create_gene_stat_table(cur):
 
 p_executor.submit(getData, gpl, cache, retry, out_file_gpl, out_file_row, gpl_lock, row_lock, translator)
 
-p_max = 5
-t_max = 5
 
-api_base = "http://localhost:5000"
-endpoints = {
-    sym2info: "/api/v1/values/gene_info",
-    gpl2gse: "/api/v1/values/gpl_gse",
-    gse2vals: "/api/v1/values/gse_values"
-}
+
 
 def create_gse_val_table(connector):
     query = """CREATE TABLE IF NOT EXISTS gene_vals (
@@ -63,6 +57,15 @@ def create_gse_val_table(connector):
         ref_id TEXT NOT NULL,
         value TEXT NOT NULL,
         PRIMARY KEY (gene_id, gse, gsm, ref_id)
+    );"""
+    connector.engine_exec(query, None, 0)
+
+def create_gsm_val_table(connector):
+    query = """CREATE TABLE IF NOT EXISTS gsm_gene_vals (
+        gene_id TEXT NOT NULL,
+        gsm TEXT NOT NULL,
+        values TEXT NOT NULL,
+        PRIMARY KEY (gene_id, gsm)
     );"""
     connector.engine_exec(query, None, 0)
 
@@ -112,29 +115,35 @@ def main():
     #vars, from config
     dbf = ""
     ftp_retry = 5
+    db_retry = 5
+    mpi_procs = 16
+
 
     with DBConnector() as connector:
-        gses = get_gses(connector)
-        gse = gses.fetchone()
-        while gse:
-            ######
-            #split this into mpi process
-            ######
-            gpls = get_gpls_from_gse(connector, gse)
-            gpl = gpls.fetchone()
-            ids = {}
-            while gpl:
-                gene_row_ids = get_gene_row_ids(connector, gpl)
-                for ids in gene_row_ids:
-                    row_id = ids[0]
-                    gene_id = ids[1]
-                    #map info to row id since the row id is going to be the main id you need to get the series info (everything else can be referenced by tis, shouldn't need until adding to db)
-                    #just map the gene_id
-                    ids[row_id] = gene_id
-                gpl = gpls.fetchone()
-            
-                handle_gse_gpl(connector, gse, gpl, ids)
+        with MPIPoolExecutor(mpi_procs) as mpi_executor:
+            gses = get_gses(connector)
             gse = gses.fetchone()
+            while gse:
+                ######
+                #split this into mpi process
+                ######
+                gpls = get_gpls_from_gse(connector, gse)
+                gpl = gpls.fetchone()
+                ids = {}
+                while gpl:
+                    gene_row_ids = get_gene_row_ids(connector, gpl)
+                    for ids in gene_row_ids:
+                        row_id = ids[0]
+                        gene_id = ids[1]
+                        #map info to row id since the row id is going to be the main id you need to get the series info (everything else can be referenced by tis, shouldn't need until adding to db)
+                        #just map the gene_id
+                        ids[row_id] = gene_id
+                    gpl = gpls.fetchone()
+
+                    mpi_executor.submit(handle_gse_gpl, connector, gse, gpl, ids)
+
+                    handle_gse_gpl(connector, gse, gpl, ids)
+                gse = gses.fetchone()
 
 
             
@@ -149,9 +158,73 @@ def main():
 if __name__ == "__main__":
     main()
 
+#REMEMBER TO GENERATE THIS TABLE AND PULL THINGS THAT HAVE NOT BEEN PROCESSED FROM HERE (PREPROCESSING STEP)!!!
+def mark_gse_gpl_processed(connector, gse, gpl, retry):
+    query = text("""
+        UPDATE gse_gpl_processed
+        SET processed = true
+        WHERE gpl = :gpl AND gse = :gse;
+    """)
+    params = {
+        "gpl": gpl,
+        "gse": gse
+    }
+    connector.engine_exec(query, params, retry)
+
+
+#10 procs, 19 threads per proc (1 main, plus 4 connections, plus some post processing, plus 4 heartbeat, plus extras since can only do 2 per node anyway (19 is half of node))
+#5 nodes, 2 tasks per node, 19 threads per task
+#4 ftp connections per task
+
+#want to still use some threading due to ability to use ftp connection pool
+def handle_gse_gpl_batch(batch):
+    threads = 18
+    with DBConnector(db_config) as connector:
+        with FTPHandler(ftp_base, ftp_pool_size, ftp_opts) as ftp_handler:
+            with ThreadPoolExecutor(threads) as t_exec:
+                for item in batch:
+                    gse = item[0]
+                    gpl = item[1]
+                    ids = item[2]
+                    f = t_exec.submit(handle_gse_gpl, connector, ftp_handler, gse, gpl, ids)
+                    def cb(gse, gpl):
+                        def _cb(f):
+                            e = f.exception()
+                            if e is not None:
+                                e = "Error in gse: %s, gpl: %s handler: %s" % (gse, gpl, str(e))
+                                print(e, file = stderr)
+                            else:
+                                try:
+                                    mark_gse_gpl_processed(connector, gse, gpl)
+                                    print("Complete gse: %s, gpl: %s" % (gse, gpl))
+                                except Exception as e:
+                                    e = "Error while updating gse: %s, gpl: %s processed entry: %s" % (gse, gpl, str(e))
+                                    print(e, file = stderr)
+                        return _cb(f)
+                    f.add_done_callback(cb(gse, gpl))
+        
+        
 
 
 
+#vars from config
+def gse_gpl_process(gse, gpl, ids):
+
+    ftp_opts = config["ftp_opts"]
+    ftp_base = config["ftp_base"]
+    ftp_pool_size = config["ftp_pool_size"]
+    g2a_db = config["gene2accession_file"]
+    
+    #also one engine for all threads
+    #just use engine exec for everything instead of passing around engine
+    #db_connect.create_db_engine(config["extern_db_config"])
+    insert_batch_size = config["insert_batch_size"]
+    db_retry = config["db_retry"]
+    ftp_retry = config["ftp_retry"]
+
+    with DBConnector(db_config) as connector:
+        with FTPHandler(ftp_base, ftp_pool_size, ftp_opts) as ftp_handler:
+            handle_gse_gpl()
 
 
 
@@ -161,7 +234,7 @@ if __name__ == "__main__":
 
 def submit_db_batch(connector, batch, retry):
     if len(batch) > 0:
-        query = text("REPLACE INTO gene_vals (gene_id, gpl, gse, gsm, ref_id, value) VALUES (:gene_id, :gpl, :gse, :gsm, :ref_id, :value)")
+        query = text("REPLACE INTO gene_vals (gene_id, gsm, values) VALUES (:gene_id, :gsm, :values)")
         connector.engine_exec(query, batch, retry)
 
 
@@ -177,10 +250,7 @@ def submit_db_batch(connector, batch, retry):
 #table, (gene_id, gse, gsm, log_2_rat, neg_log_10_p)
 
 #change return from boolean to (boolean include, boolean continue)
-def handle_gse_gpl(connector, gse, gpl, ids, ftp_handler, db_retry, ftp_retry, batch_size):
-    #map gene ids to arrays of values
-    gene_val_map = {}
-
+def handle_gse_gpl(connector, gse, gpl, ids, db_retry, ftp_retry, batch_size):
     #ids (row_id, gene_id)[]
     row_ids = set(ids.keys())
 
@@ -211,9 +281,11 @@ def handle_gse_gpl(connector, gse, gpl, ids, ftp_handler, db_retry, ftp_retry, b
 
 
     #super fast check
-    def check_skip_continue(row):
+    def check_include_continue(row):
         nonlocal row_ids
         nonlocal header
+        nonlocal values_map
+
         if header is None:
             header = row
             #check that there are samples (first column is row ids)
@@ -222,7 +294,7 @@ def handle_gse_gpl(connector, gse, gpl, ids, ftp_handler, db_retry, ftp_retry, b
             #make gsms lowercase
             for i in range(1, len(header)):
                 header[i] = header[i].lower()
-                values_map.append({ids[row_id]: [] for row_id in ids})
+                values_map.append({})
             #don't add header to rows to send to handler, continue
             return (False, True)
         else:
@@ -243,46 +315,51 @@ def handle_gse_gpl(connector, gse, gpl, ids, ftp_handler, db_retry, ftp_retry, b
 
     #header is ID_REG, GSMXXX, ...
     def handle_row(row):
-        nonlocal batch
         nonlocal header
         nonlocal ids
-        nonlocal gene_val_map
+        nonlocal values_map
 
         row_id = row[0]
         gene_id = ids[row_id]["gene_id"]
         gpl = ids[row_id]["gpl"]
-
-        if 
 
         for i in range(1, len(row)):
             gsm = header[i]
             gsm_val = row[i]
             
             #minus one due to ref_id col offset
-            values_map[i - 1] = 
+            vals = values_map[i - 1].get(gene_id)
+            if vals is None:
+                vals = []
+                values_map[i - 1][gene_id] = vals
+            vals.append(gsm_val)
 
-            fields = {
-                "gene_id": gene_id,
-                "gpl": gpl,
-                "gse": gse,
-                "gsm": gsm,
-                "ref_id": row_id,
-                "value": gsm_val
-            }
-            batch.append(fields)
-            if len(batch) % batch_size == 0:
-                #just let errors be handled in thread executor callback, if a single batch fails just redo the whole platform for simplicity sake
-                submit_db_batch(connector, batch, db_retry)
-                batch = []
-            submit_db_batch(connector, batch, db_retry)
+        #let callee handle other errors
+        try:
+            #create ftp handler
+            with FTPHandler(ftp_base, ftp_pool_size, ftp_opts) as ftp_handler:
+                ftp_handler.process_gse_data(gpl, check_include_continue, handle_row, ftp_retry)
+        #if a resource not found error was raised then the resource doesn't exist on the ftp server, just skip this one
+        except ResourceNotFoundError:
+            pass
 
-
-    #let errors be handled by callee (log error and don't mark gpl as processed)
-    #note that some of the unprocessed gpls may just not exist, can check those after
-    try:
-        ftp_handler.process_gse_data(gpl, check_skip_continue, handle_row, ftp_retry)
-    #if a resource not found error was raised then the resource doesn't exist on the ftp server, just skip this one
-    except ResourceNotFoundError:
-        pass
-    #submit anything leftover in the last batch
-    submit_db_batch(connector, batch, db_retry)
+        #actual batch submissions in post processing step since aggregating results
+        #use bar separated values list
+        batch = []
+        for i in range(1, len(header)):
+            gsm = header[i]
+            data = values_map[i - 1]
+            for gene_id in data:
+                vals = data[gene_id]
+                val_list_string = "|".join(vals)
+                fields = {
+                    gene_id: gene_id,
+                    gsm: gsm,
+                    values: val_list_string
+                }
+                batch.append(fields)
+                if len(batch) % batch_size == 0:
+                    submit_db_batch(connector, batch, db_retry)
+                    batch = []
+        #submit anything leftover in the last batch
+        submit_db_batch(connector, batch, db_retry)
