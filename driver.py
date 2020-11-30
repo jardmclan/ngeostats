@@ -5,6 +5,9 @@ from db_connect import DBConnector
 import sqlite3
 from mpi4py.futures import MPIPoolExecutor
 from concurrent.futures import ThreadPoolExecutor
+from threading import Semaphore
+from ftp_handler import FTPHandler
+import gse_gpl_processor
 
 class QueryParamGen():
     def __init__(self, source, nodata):
@@ -104,6 +107,11 @@ def get_gpls_from_gse(connector, gse):
     res = connector.engine_exec(query, {"gse": gse}, 0)
     return res
 
+
+
+
+#############################
+
 #!!!A SERIES CAN HAVE MULTIPLE PLATFORMS (CONSTITUENT SAMPLES HAVE DIFFERENT PLATFORMS)
 #need to start with series, get set of all series, for each series get platforms, then get ids
 
@@ -111,42 +119,94 @@ def get_gpls_from_gse(connector, gse):
 #AND (gsm, ref_id) is the minimal unique key
 
 
+
+
+
+
+def get_gse_gpls(connector, retry):
+    def row_to_dict(row):
+        d = {
+            "gse": row[0],
+            "gpl": row[1]
+        }
+        return d
+
+    query = text("SELECT gse, gpl FROM gse_gpl_processed WHERE processed = false)
+    res = connector.engine_exec(query, None, retry).fetchall()
+    res = list(map(row_to_dict, res))
+    return res
+
+
+
+def get_gpl_id_ref_map(connector, gpl, retry):
+    
+
+    query = text("SELECT ref_id, gene_id FROM gene_gpl_ref_new WHERE gpl = :gpl")
+    params = {
+        "gpl": gpl
+    }
+    res = connector.engine_exec(query, params, retry)
+    #want to create id mapping for handle_gse_gpl method which is row_id to gene_id map
+    id_ref_map = {}
+    for row in res:
+        id_ref_map[row[0]] = row[1]
+    return id_ref_map
+
+#connector, ftp_handler, gse, gpl, ids, db_retry, ftp_retry, batch_size
+def handle_chunk(chunk, config):
+    threads = config[]
+    ftp_base = config[]
+    ftp_pool_size = config[]
+    ftp_opts = config[]
+    ftp_retry = config[]
+    batch_size = config[]
+
+    with ThreadPoolExecutor(threads) as t_exec:
+        with FTPHandler(ftp_base, ftp_pool_size, ftp_opts) as ftp_handler:
+            with DBConnector() as connector:
+                for gse_gpl in chunk:
+                    #get row mappings
+                    id_ref_map = get_gpl_id_ref_map(connector, gpl).fetchall()
+                    #no rows, skip
+                    if len(gpl_refs) < 1:
+                        continue
+                    f = t_exec.submit(gse_gpl_processor.handle_gse_gpl, connector, ftp_handler, gse_gpl["gse"], gse_gpl["gpl"], id_ref_map, ftp_retry, batch_size)
+
+
+                
+
+
+
+
+
+
 def main():
+    config
     #vars, from config
     dbf = ""
     ftp_retry = 5
     db_retry = 5
     mpi_procs = 16
+    threads = 2
+    chunk_size = 10000
 
-
+    gse_gpls = None
     with DBConnector() as connector:
-        with MPIPoolExecutor(mpi_procs) as mpi_executor:
-            gses = get_gses(connector)
-            gse = gses.fetchone()
-            while gse:
-                ######
-                #split this into mpi process
-                ######
-                gpls = get_gpls_from_gse(connector, gse)
-                gpl = gpls.fetchone()
-                ids = {}
-                while gpl:
-                    gene_row_ids = get_gene_row_ids(connector, gpl)
-                    for ids in gene_row_ids:
-                        row_id = ids[0]
-                        gene_id = ids[1]
-                        #map info to row id since the row id is going to be the main id you need to get the series info (everything else can be referenced by tis, shouldn't need until adding to db)
-                        #just map the gene_id
-                        ids[row_id] = gene_id
-                    gpl = gpls.fetchone()
-
-                    mpi_executor.submit(handle_gse_gpl, connector, gse, gpl, ids)
-
-                    handle_gse_gpl(connector, gse, gpl, ids)
-                gse = gses.fetchone()
+        gse_gpls = get_gse_gpls(connector, db_retry).fetchall()
+    with MPIPoolExecutor(mpi_procs) as mpi_exec:
+        chunk_start = 0
+        while chunk_end < len(gse_gpls):
+            chunk_end = chunk_start + chunk_size
+            if chunk_end > len(gse_gpls):
+                chunk_end = len(gse_gpls)
+            chunk = gse_gpls[chunk_start : chunk_end]
+            #need to do anything on return? maybe error handling?
+            f = mpi_exec.submit(handle_chunk, chunk, config)
+            chunk_start = chunk_end
 
 
-            
+
+
 
 
         #get list of unique platforms from translation table
@@ -232,134 +292,3 @@ def gse_gpl_process(gse, gpl, ids):
 
 
 
-def submit_db_batch(connector, batch, retry):
-    if len(batch) > 0:
-        query = text("REPLACE INTO gene_vals (gene_id, gsm, values) VALUES (:gene_id, :gsm, :values)")
-        connector.engine_exec(query, batch, retry)
-
-
-
-#just store raw values in case want to do more with them later (apply sample control analysis, etc)
-#table needs: (gene_id, gpl, gse, gsm, ref_id, value)
-#note there may be multiple values of for the same gene for a given sample (accession series etc), these should typically be averaged out, provide ref_id to differentiate and provide primary key, and also provide back reference if needed for future analysis
-# primary key (gene_id, gse, gsm, ref_id)
-# note gsm can be in multiple gses, one gpl per gsm, gse can cover multiple gpls (assume this means that gpls must have same set of rows)
-#note can use group by and avg to aggregate values in queries (e.g group by gsm and take average value for given gene_id)
-
-#maybe also second table with pre-computed info for fast access, log_2(ratio), -log_10(p) 
-#table, (gene_id, gse, gsm, log_2_rat, neg_log_10_p)
-
-#change return from boolean to (boolean include, boolean continue)
-def handle_gse_gpl(connector, gse, gpl, ids, db_retry, ftp_retry, batch_size):
-    #ids (row_id, gene_id)[]
-    row_ids = set(ids.keys())
-
-    #preprocess ids
-    row_gene_map = {}
-    data = {}
-    for id_set in ids:
-        row_id = id_set[0]
-        gene_id = id_set[1]
-
-        row_gene_map[row_id] = gene_id
-
-        data[gene_id] = {
-            "gene_id": gene_id,
-            "values": []
-        }
-
-
-
-
-    batch = []
-    
-    #(id_col, [translation_cols])
-    header_info = None
-    header = None
-
-    values_map = []
-
-
-    #super fast check
-    def check_include_continue(row):
-        nonlocal row_ids
-        nonlocal header
-        nonlocal values_map
-
-        if header is None:
-            header = row
-            #check that there are samples (first column is row ids)
-            if len(row) < 2:
-                return (False, False)
-            #make gsms lowercase
-            for i in range(1, len(header)):
-                header[i] = header[i].lower()
-                values_map.append({})
-            #don't add header to rows to send to handler, continue
-            return (False, True)
-        else:
-            row_id = row[0]
-            if row_id in row_ids:
-                row_ids.remove(row_id)
-                if len(row_ids) <= 0:
-                    return (True, False)
-            else:
-                return (True, True)
-        
-
-    #create p value, 
-
-    #map by gene_id
-
-    
-
-    #header is ID_REG, GSMXXX, ...
-    def handle_row(row):
-        nonlocal header
-        nonlocal ids
-        nonlocal values_map
-
-        row_id = row[0]
-        gene_id = ids[row_id]["gene_id"]
-        gpl = ids[row_id]["gpl"]
-
-        for i in range(1, len(row)):
-            gsm = header[i]
-            gsm_val = row[i]
-            
-            #minus one due to ref_id col offset
-            vals = values_map[i - 1].get(gene_id)
-            if vals is None:
-                vals = []
-                values_map[i - 1][gene_id] = vals
-            vals.append(gsm_val)
-
-        #let callee handle other errors
-        try:
-            #create ftp handler
-            with FTPHandler(ftp_base, ftp_pool_size, ftp_opts) as ftp_handler:
-                ftp_handler.process_gse_data(gpl, check_include_continue, handle_row, ftp_retry)
-        #if a resource not found error was raised then the resource doesn't exist on the ftp server, just skip this one
-        except ResourceNotFoundError:
-            pass
-
-        #actual batch submissions in post processing step since aggregating results
-        #use bar separated values list
-        batch = []
-        for i in range(1, len(header)):
-            gsm = header[i]
-            data = values_map[i - 1]
-            for gene_id in data:
-                vals = data[gene_id]
-                val_list_string = "|".join(vals)
-                fields = {
-                    gene_id: gene_id,
-                    gsm: gsm,
-                    values: val_list_string
-                }
-                batch.append(fields)
-                if len(batch) % batch_size == 0:
-                    submit_db_batch(connector, batch, db_retry)
-                    batch = []
-        #submit anything leftover in the last batch
-        submit_db_batch(connector, batch, db_retry)

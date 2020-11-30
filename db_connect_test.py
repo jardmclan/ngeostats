@@ -175,7 +175,11 @@ class DBConnector():
         #note caller should handle errors and cleanup engine as necessary (or use with)
         try:
             with self.engine.begin() as con:
-                res = con.execute(query, params) if params is not None else con.execute(query)
+                #force restart on first (assume retry max 5) to test
+                if retry == 5:
+                    restart_retry()
+                else:
+                    res = con.execute(query, params) if params is not None else con.execute(query)
         except exc.OperationalError as e:
             #check if deadlock error (code 1213)
             if e.orig.args[0] == 1213:

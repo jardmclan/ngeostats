@@ -5,7 +5,6 @@ import json
 from time import sleep
 from sqlalchemy import exc
 import random
-from threading import Lock, Event
 
 class DBConnectorError(Exception):
     pass
@@ -14,12 +13,7 @@ class DBConnector():
     def __init__(self, config = None):
         self.tunnel = None
         self.disposed = False
-        self.exec_lock= Lock()
-        self.exec_count_lock = Lock()
-        self.exec_count = 0
-        self.idle = Event()
-        self.idle.set()
-        self.restarting = False
+
         default_config_file = "config.json"
 
         if config is None:
@@ -29,6 +23,10 @@ class DBConnector():
         self.config = config
 
         self.__start()
+
+        
+        
+
         
 
     def __start(self):
@@ -51,8 +49,7 @@ class DBConnector():
             remote_bind_address = (tunnel_config["remote"], int(tunnel_config["remote_port"])),
             local_bind_address = (tunnel_config["local"], int(tunnel_config["local_port"])) if tunnel_config["local_port"] is not None else (tunnel_config["local"], )
         )
-        #looks like this should solve hanging issue on stop
-        self.tunnel.daemon_forward_servers = True
+
         self.tunnel.start()
 
     def __start_engine(self):
@@ -74,29 +71,20 @@ class DBConnector():
     
 
     def __restart_con(self):
-        #don't want to restart multiple times, if already restarting just leave
-        if not self.restarting:
-            self.restarting = True
-            def f():
-                self.__cleanup_db_con()
-                self.__start()
-            self.block_exec_and_wait_idle(f)
-            self.restarting = False
+        #only restart engine, restarting tunnel makes everything go crazy because tunnel shutdown a little wonky
+        self.__dispose_engine()
+         self.__start_engine()
 
     def __dispose_engine(self):
         try:
-            print("disposing engine")
             self.engine.dispose()
-            print("engine disposed")
         except:
             pass
 
     def __dispose_tunnel(self):
         if self.tunnel is not None:
             try:
-                print("stopping tunnel")
                 self.tunnel.stop()
-                print("tunnel stopped")
             except:
                 pass
     
@@ -112,43 +100,13 @@ class DBConnector():
 
 
 
-    # def get_engine(self):
-    #     return self.engine
-
-    def block_exec_and_wait_idle(self, f):
-        #stops new executions
-        with self.exec_lock:
-            #wait until idle
-            self.idle.wait()
-            #execute function that requires idle
-            f()
-
-    def begin_exec(self):
-        #stop counter races
-        with self.exec_count_lock:
-            #acquire exec lock (block if waiting on restart)
-            with self.exec_lock:
-                #connection not idle
-                self.idle.clear()
-                #add exec to counter
-                self.exec_count += 1
-
-    def end_exec(self):
-        #stop counter races
-        with self.exec_count_lock:
-            #remove exec from counter
-            self.exec_count -= 1
-            #if exec count 0 set idle
-            if self.exec_count < 1:
-                self.idle.set()
+    def get_engine(self):
+        return self.engine
 
 
     def __engine_exec_r(self, query, params, retry, delay = 0):
         if retry < 0:
             raise Exception("Retry limit exceeded")
-        #signal execution start
-        self.begin_exec()
-        #with self.exec_lock:
         sleep(delay)
         res = None
         def get_backoff():
@@ -160,17 +118,6 @@ class DBConnector():
             else:
                 backoff = delay * 2 + random.uniform(0, delay)
             return backoff
-        def restart_retry():
-            nonlocal res
-            #indicate end of execution to give space for retry (requires idle)
-            self.end_exec()
-            #restart the connection
-            self.__restart_con()
-            #retry, will wait until connection restarted so shouldn't need backoff
-            #backoff = get_backoff()
-            res = self.__engine_exec_r(query, params, retry - 1, 0)
-        
-        restart = False
         #engine.begin() block has error handling logic, so try catch should be outside of this block
         #note caller should handle errors and cleanup engine as necessary (or use with)
         try:
@@ -180,22 +127,20 @@ class DBConnector():
             #check if deadlock error (code 1213)
             if e.orig.args[0] == 1213:
                 backoff = get_backoff()
-                #retry with one less retry remaining and current backoff (no need to restart connection)
+                #retry with one less retry remaining and current backoff
                 res = self.__engine_exec_r(query, params, retry - 1, backoff)
             #something else went wrong, log exception and add to failures
             else:
-                restart = True
-                print(e)
-        except Exception as e:
-            restart = True
-            print(e)
-        if restart:
-            #restart the connection and retry
-            restart_retry()
-        else:
-            #execution ended
-            self.end_exec()
-
+                #if something happens to the tunnel it may throw a db connection error, just restart everything to be safe
+                self.__restart_con()
+                #self.__restart_engine()
+                backoff = get_backoff()
+                res = self.__engine_exec_r(query, params, retry - 1, backoff)
+        except:
+            #not sure what the error was, restart everything
+            self.__restart_con()
+            backoff = get_backoff()
+            res = self.__engine_exec_r(query, params, retry - 1, backoff)
         #return query result
         return res
 
@@ -203,9 +148,7 @@ class DBConnector():
     def engine_exec(self, query, params, retry):
         if self.disposed:
             raise RuntimeError("Cannot call engine exec after cleanup_db_engine. Object disposed")
-        res = self.__engine_exec_r(query, params, retry)
-        return res
-
+        return self.__engine_exec_r(query, params, retry)
     
 
     def __enter__(self):

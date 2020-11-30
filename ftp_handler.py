@@ -9,6 +9,8 @@ import ftp_downloader
 import sys
 import traceback
 
+csv.field_size_limit(sys.maxsize)
+
 class FTPHandlerError(Exception):
     pass
 
@@ -38,7 +40,7 @@ class FTPHandler:
                 include_continue = check_include_continue(row)
                 if check_include_continue(row)[0]:
                     data_rows.append(row)
-                if not check_include_continue[1]:
+                if not check_include_continue(row)[1]:
                     break
         return data_rows
             
@@ -46,7 +48,7 @@ class FTPHandler:
 
     def stream_processor(self, table_start, table_end, check_include_continue):
         def _stream_processor(file):
-            self.parse_data_table_gz(file, table_start, table_end, check_include_continue)
+            return self.parse_data_table_gz(file, table_start, table_end, check_include_continue)
         return _stream_processor
 
     #shouldn't need a delay on retry, just getting another connection from the pool
@@ -89,7 +91,7 @@ class FTPHandler:
         except ftplib.all_errors + (ftp_downloader.FTPStreamException,) as e:
             #retry
             #info = sys.exc_info()
-            self.__process_data_r(gse, check_include_continue, row_handler, retry - 1, ftp_con, e)
+            self.__process_data_r(get_data, check_include_continue, row_handler, retry - 1, ftp_con, e)
         #probably an issue with resource info or resource does not exist
         #shouldn't actually be a problem with the connection, assumes error was not in return_con call
         except Exception as e:
@@ -97,7 +99,7 @@ class FTPHandler:
             raise e
         #else runs if no exception raised
         else:
-            __handle_data_r(data, row_handler, retry)
+            self.__handle_data_r(data, row_handler, retry)
 
     def __handle_data_r(self, data, row_handler, retry, last_error = None):
         if retry < 0:
@@ -107,7 +109,7 @@ class FTPHandler:
             for row in data:
                 row_handler(row)
         except Exception as e:
-            __handle_data_r(data, retry - 1, e)
+            self.__handle_data_r(data, row_handler, retry - 1, e)
 
     
     def dispose(self):
@@ -118,6 +120,7 @@ class FTPHandler:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        #print("Not an error: exiting ftp handler", file = sys.stderr)
         self.dispose()
         if exc_type is not None:
             raise FTPHandlerError("An error occured in the FTP Handler: type: %s, error: %s" % (exc_type.__name__, exc_val))
