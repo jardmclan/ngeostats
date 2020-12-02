@@ -1,12 +1,13 @@
 from sqlalchemy import text
 from ftp_downloader import ResourceNotFoundError
 
+class ValueFieldTooLongError(Exception):
+    pass
+
 def submit_db_batch(connector, batch, retry):
     if len(batch) > 0:
-        query = text("REPLACE INTO gene_vals (gene_id, gsm, values) VALUES (:gene_id, :gsm, :values)")
+        query = text("REPLACE INTO gsm_gene_vals (gsm, gene_id, values) VALUES (:gsm, :gene_id, :values)")
         connector.engine_exec(query, batch, retry)
-
-
 
 #just store raw values in case want to do more with them later (apply sample control analysis, etc)
 #table needs: (gene_id, gpl, gse, gsm, ref_id, value)
@@ -72,30 +73,33 @@ def handle_gse_gpl(connector, ftp_handler, gse, gpl, ids, db_retry, ftp_retry, b
                 values_map[i - 1][gene_id] = vals
             vals.append(gsm_val)
 
-        #let callee handle other errors
-        try:
-            ftp_handler.process_gse_data(gpl, check_include_continue, handle_row, ftp_retry)
-        #if a resource not found error was raised then the resource doesn't exist on the ftp server, just skip this one
-        except ResourceNotFoundError:
-            pass
+    #let callee handle other errors
+    try:
+        ftp_handler.process_gse_data(gpl, check_include_continue, handle_row, ftp_retry)
+    #if a resource not found error was raised then the resource doesn't exist on the ftp server, just skip this one
+    except ResourceNotFoundError:
+        pass
 
-        #actual batch submissions in post processing step since aggregating results
-        #use bar separated values list
-        batch = []
-        for i in range(1, len(header)):
-            gsm = header[i]
-            data = values_map[i - 1]
-            for gene_id in data:
-                vals = data[gene_id]
-                val_list_string = "|".join(vals)
-                fields = {
-                    gene_id: gene_id,
-                    gsm: gsm,
-                    values: val_list_string
-                }
-                batch.append(fields)
-                if len(batch) % batch_size == 0:
-                    submit_db_batch(connector, batch, db_retry)
-                    batch = []
-        #submit anything leftover in the last batch
-        submit_db_batch(connector, batch, db_retry)
+    #actual batch submissions in post processing step since aggregating results
+    #use bar separated values list
+    batch = []
+    for i in range(1, len(header)):
+        gsm = header[i]
+        data = values_map[i - 1]
+        for gene_id in data:
+            vals = data[gene_id]
+            val_list_string = "|".join(vals)
+            #make sure value string length doesn't exceed column size (if this happens might have to rework something)
+            if len(val_list_string) > 65535:
+                raise ValueFieldTooLongError("Value field exceeded 65535 character limit.")
+            fields = {
+                "gsm": gsm,
+                "gene_id": gene_id,
+                "values": val_list_string
+            }
+            batch.append(fields)
+            if len(batch) >= batch_size:
+                submit_db_batch(connector, batch, db_retry)
+                batch = []
+    #submit anything leftover in the last batch
+    submit_db_batch(connector, batch, db_retry)

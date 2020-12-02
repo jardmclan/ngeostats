@@ -13,16 +13,16 @@ from sys import stderr
 def run_query(connector):
     query = text("SELECT count(*) FROM gse_gpl_processed")
     res = connector.engine_exec(query, None, 5)
-    print(res.fetchall)
+    print(res.fetchall())
 
 def main():
-    threads = 10
+    threads = 3
 
     #saturate 10 times
-    num_run = threads * 10
+    num_run = threads * 3
 
-    with ThreadPoolExecutor(threads) as t_exec:
-        with DBConnector() as connector:
+    with DBConnector() as connector:
+        with ThreadPoolExecutor(threads) as t_exec:
             for i in range(num_run):
                 f = t_exec.submit(run_query, connector)
                 def cb(f):

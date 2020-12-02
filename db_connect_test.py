@@ -19,7 +19,8 @@ class DBConnector():
         self.exec_count = 0
         self.idle = Event()
         self.idle.set()
-        self.restarting = False
+        #if the flag is not set then restarting
+        self.started = Event()
         default_config_file = "config.json"
 
         if config is None:
@@ -29,6 +30,7 @@ class DBConnector():
         self.config = config
 
         self.__start()
+        self.started.set()
         
 
     def __start(self):
@@ -74,29 +76,32 @@ class DBConnector():
     
 
     def __restart_con(self):
-        #don't want to restart multiple times, if already restarting just leave
-        if not self.restarting:
-            self.restarting = True
+        #don't want to restart multiple times
+        if self.started.is_set():
+            #clear the started flag until done restarting
+            self.started.clear()
             def f():
                 self.__cleanup_db_con()
                 self.__start()
-            self.block_exec_and_wait_idle(f)
-            self.restarting = False
+                #restarting tunnel seems to c
+            self.__block_exec_and_wait_idle(f)
+            #done restarting, set started flag
+            self.started.set()
+        #if already restarting wait on restarted flag to be set
+        else:
+            self.started.wait()
 
     def __dispose_engine(self):
         try:
-            print("disposing engine")
             self.engine.dispose()
-            print("engine disposed")
         except:
             pass
+
 
     def __dispose_tunnel(self):
         if self.tunnel is not None:
             try:
-                print("stopping tunnel")
                 self.tunnel.stop()
-                print("tunnel stopped")
             except:
                 pass
     
@@ -115,7 +120,7 @@ class DBConnector():
     # def get_engine(self):
     #     return self.engine
 
-    def block_exec_and_wait_idle(self, f):
+    def __block_exec_and_wait_idle(self, f):
         #stops new executions
         with self.exec_lock:
             #wait until idle
@@ -123,17 +128,17 @@ class DBConnector():
             #execute function that requires idle
             f()
 
-    def begin_exec(self):
-        #stop counter races
-        with self.exec_count_lock:
-            #acquire exec lock (block if waiting on restart)
-            with self.exec_lock:
+    def __begin_exec(self):
+        #acquire exec lock (block if waiting on restart)
+        with self.exec_lock:
+            #stop counter races
+            with self.exec_count_lock:
                 #connection not idle
                 self.idle.clear()
                 #add exec to counter
                 self.exec_count += 1
 
-    def end_exec(self):
+    def __end_exec(self):
         #stop counter races
         with self.exec_count_lock:
             #remove exec from counter
@@ -147,7 +152,7 @@ class DBConnector():
         if retry < 0:
             raise Exception("Retry limit exceeded")
         #signal execution start
-        self.begin_exec()
+        self.__begin_exec()
         #with self.exec_lock:
         sleep(delay)
         res = None
@@ -163,43 +168,40 @@ class DBConnector():
         def restart_retry():
             nonlocal res
             #indicate end of execution to give space for retry (requires idle)
-            self.end_exec()
+            self.__end_exec()
             #restart the connection
             self.__restart_con()
             #retry, will wait until connection restarted so shouldn't need backoff
             #backoff = get_backoff()
             res = self.__engine_exec_r(query, params, retry - 1, 0)
-        
         restart = False
+
         #engine.begin() block has error handling logic, so try catch should be outside of this block
         #note caller should handle errors and cleanup engine as necessary (or use with)
         try:
             with self.engine.begin() as con:
-                #force restart on first (assume retry max 5) to test
-                if retry == 5:
-                    restart_retry()
-                else:
-                    res = con.execute(query, params) if params is not None else con.execute(query)
+                res = con.execute(query, params) if params is not None else con.execute(query)
         except exc.OperationalError as e:
             #check if deadlock error (code 1213)
             if e.orig.args[0] == 1213:
                 backoff = get_backoff()
+                self.__end_exec()
                 #retry with one less retry remaining and current backoff (no need to restart connection)
                 res = self.__engine_exec_r(query, params, retry - 1, backoff)
             #something else went wrong, log exception and add to failures
             else:
                 restart = True
-                print(e)
         except Exception as e:
             restart = True
-            print(e)
+        
+        #restart connection if indicated
         if restart:
             #restart the connection and retry
             restart_retry()
         else:
             #execution ended
-            self.end_exec()
-
+            self.__end_exec()
+        
         #return query result
         return res
 
