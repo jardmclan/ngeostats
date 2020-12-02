@@ -8,6 +8,7 @@ from ftp_manager import FTPManager
 import ftp_downloader
 import sys
 import traceback
+from time import sleep
 
 csv.field_size_limit(sys.maxsize)
 
@@ -38,9 +39,9 @@ class FTPHandler:
                 if row[0] == table_end:
                     break
                 include_continue = check_include_continue(row)
-                if check_include_continue(row)[0]:
+                if include_continue[0]:
                     data_rows.append(row)
-                if not check_include_continue(row)[1]:
+                if not include_continue[1]:
                     break
         return data_rows
             

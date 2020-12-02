@@ -148,9 +148,9 @@ class DBConnector():
                 self.idle.set()
 
 
-    def __engine_exec_r(self, query, params, retry, delay = 0):
+    def __engine_exec_r(self, query, params, retry, delay = 0, last_error = None):
         if retry < 0:
-            raise Exception("Retry limit exceeded")
+            raise Exception("Retry limit exceeded. Last error: %s" % last_error)
         #signal execution start
         self.__begin_exec()
         #with self.exec_lock:
@@ -173,7 +173,7 @@ class DBConnector():
             self.__restart_con()
             #retry, will wait until connection restarted so shouldn't need backoff
             #backoff = get_backoff()
-            res = self.__engine_exec_r(query, params, retry - 1, 0)
+            res = self.__engine_exec_r(query, params, retry - 1, 0, last_error)
         restart = False
 
         #engine.begin() block has error handling logic, so try catch should be outside of this block
@@ -182,16 +182,18 @@ class DBConnector():
             with self.engine.begin() as con:
                 res = con.execute(query, params) if params is not None else con.execute(query)
         except exc.OperationalError as e:
+            last_error = e
             #check if deadlock error (code 1213)
             if e.orig.args[0] == 1213:
                 backoff = get_backoff()
                 self.__end_exec()
                 #retry with one less retry remaining and current backoff (no need to restart connection)
-                res = self.__engine_exec_r(query, params, retry - 1, backoff)
+                res = self.__engine_exec_r(query, params, retry - 1, backoff, last_error)
             #something else went wrong, log exception and add to failures
             else:
                 restart = True
         except Exception as e:
+            last_error = e
             restart = True
         
         #restart connection if indicated

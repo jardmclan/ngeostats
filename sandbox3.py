@@ -4,7 +4,7 @@
 # }
 # print(d)
 
-from db_connect_test import DBConnector
+from db_connect import DBConnector
 from concurrent.futures import ThreadPoolExecutor
 from sqlalchemy import text
 from sys import stderr
@@ -16,10 +16,10 @@ def run_query(connector):
     print(res.fetchall())
 
 def main():
-    threads = 3
+    threads = 10
 
     #saturate 10 times
-    num_run = threads * 3
+    num_run = threads * 10
 
     with DBConnector() as connector:
         with ThreadPoolExecutor(threads) as t_exec:

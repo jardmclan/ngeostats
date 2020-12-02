@@ -6,7 +6,7 @@ class ValueFieldTooLongError(Exception):
 
 def submit_db_batch(connector, batch, retry):
     if len(batch) > 0:
-        query = text("REPLACE INTO gsm_gene_vals (gsm, gene_id, values) VALUES (:gsm, :gene_id, :values)")
+        query = text("REPLACE INTO gsm_gene_vals (gsm, gene_id, expression_values) VALUES (:gsm, :gene_id, :values)")
         connector.engine_exec(query, batch, retry)
 
 #just store raw values in case want to do more with them later (apply sample control analysis, etc)
@@ -24,7 +24,6 @@ def submit_db_batch(connector, batch, retry):
 #ids are a mapping of row_ids to gene_ids
 def handle_gse_gpl(connector, ftp_handler, gse, gpl, ids, db_retry, ftp_retry, batch_size):
     row_ids = set(ids.keys())
-    
     header = None
     values_map = []
 
@@ -34,38 +33,41 @@ def handle_gse_gpl(connector, ftp_handler, gse, gpl, ids, db_retry, ftp_retry, b
         nonlocal header
         nonlocal values_map
 
+        include_continue = (True, True)
+
         if header is None:
             header = row
             #check that there are samples (first column is row ids)
             if len(row) < 2:
-                return (False, False)
-            #make gsms lowercase
-            for i in range(1, len(header)):
-                header[i] = header[i].lower()
-                values_map.append({})
-            #don't add header to rows to send to handler, continue
-            return (False, True)
+                include_continue = (False, False)
+            else:
+                #make gsms lowercase
+                for i in range(1, len(header)):
+                    #convert gsms to lowercase and strip quotes
+                    header[i] = header[i].lower().strip('"')
+                    values_map.append({})
+                #don't add header to rows to send to handler, continue
+                include_continue = (False, True)
         else:
+            #ID_REF is quoted, strip quotes
+            row[0] = row[0].strip('"')
             row_id = row[0]
             if row_id in row_ids:
                 row_ids.remove(row_id)
                 if len(row_ids) <= 0:
-                    return (True, False)
+                    include_continue = (True, False)
             else:
-                return (True, True)
+                include_continue = (False, True)
+        return include_continue
     
     def handle_row(row):
-        nonlocal header
-        nonlocal ids
         nonlocal values_map
-
         row_id = row[0]
         gene_id = ids[row_id]
 
         for i in range(1, len(row)):
             gsm = header[i]
             gsm_val = row[i]
-            
             #minus one due to ref_id col offset
             vals = values_map[i - 1].get(gene_id)
             if vals is None:
@@ -75,7 +77,7 @@ def handle_gse_gpl(connector, ftp_handler, gse, gpl, ids, db_retry, ftp_retry, b
 
     #let callee handle other errors
     try:
-        ftp_handler.process_gse_data(gpl, check_include_continue, handle_row, ftp_retry)
+        ftp_handler.process_gse_data(gse, gpl, check_include_continue, handle_row, ftp_retry)
     #if a resource not found error was raised then the resource doesn't exist on the ftp server, just skip this one
     except ResourceNotFoundError:
         pass
@@ -91,6 +93,7 @@ def handle_gse_gpl(connector, ftp_handler, gse, gpl, ids, db_retry, ftp_retry, b
             val_list_string = "|".join(vals)
             #make sure value string length doesn't exceed column size (if this happens might have to rework something)
             if len(val_list_string) > 65535:
+                print(len(val_list_string))
                 raise ValueFieldTooLongError("Value field exceeded 65535 character limit.")
             fields = {
                 "gsm": gsm,
