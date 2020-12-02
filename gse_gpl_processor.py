@@ -1,6 +1,8 @@
 from sqlalchemy import text
 from ftp_downloader import ResourceNotFoundError
 
+MAX_VALUES_SIZE = 16777215
+
 class ValueFieldTooLongError(Exception):
     pass
 
@@ -92,9 +94,8 @@ def handle_gse_gpl(connector, ftp_handler, gse, gpl, ids, db_retry, ftp_retry, b
             vals = data[gene_id]
             val_list_string = "|".join(vals)
             #make sure value string length doesn't exceed column size (if this happens might have to rework something)
-            if len(val_list_string) > 65535:
-                print(len(val_list_string))
-                raise ValueFieldTooLongError("Value field exceeded 65535 character limit.")
+            if len(val_list_string) > MAX_VALUES_SIZE:
+                raise ValueFieldTooLongError("Value field exceeded %d character limit, length: %d." % (MAX_VALUES_SIZE, len(val_list_string)))
             fields = {
                 "gsm": gsm,
                 "gene_id": gene_id,

@@ -1,3 +1,4 @@
 all_data
 gene_info
 config.json
+__pycache__

@@ -19,11 +19,13 @@ from json import load
 #note that while a sample can potentially be in multiple series the value should always be the same for a given sample and ref_id, so some will be overwritten with the same value
 
 #note can't name a column "values"
+#note default char encoding latin1, which is 1 byte per char (and will be sufficient for these fields)
+#values field may have many values, varchar not sufficient for storage
 def create_gsm_val_table(connector):
     query = """CREATE TABLE IF NOT EXISTS gsm_gene_vals (
         gsm varchar(255) NOT NULL,
         gene_id varchar(255) NOT NULL,  
-        expression_values varchar(65535) NOT NULL,
+        expression_values MEDIUMTEXT NOT NULL,
         PRIMARY KEY (gene_id, gsm)
     );"""
     connector.engine_exec(query, None, 0)
