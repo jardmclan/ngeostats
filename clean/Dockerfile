@@ -1,11 +1,16 @@
 # image: ngeo/translate
 
-FROM python:3.8.3
+#FROM intelpython/intelpython3_full
+FROM spagnuolocarmine/docker-mpi
 
 COPY . /app
 WORKDIR /app
 
-# RUN pip install --upgrade pip
-# RUN pip install -r requirements.txt
+# RUN apt install libopenmpi-dev
 
-ENTRYPOINT ["python", "-u", "driver.py"]
+RUN mkdir /opt/apps
+
+RUN pip3 install --upgrade pip
+RUN pip3 install -r requirements.txt
+
+ENTRYPOINT ["python3", "-u", "driver.py"]
