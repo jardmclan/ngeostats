@@ -34,7 +34,7 @@ with open(config_file) as f:
 
 #process rank
 rank = comm.Get_rank()
-node = MPI.Get_processor_name()
+processor_name = MPI.Get_processor_name()
 
 ############################################
 
@@ -237,9 +237,11 @@ def handle_data():
 
 #master rank, run distributor
 if rank == distributor_rank:
+    print("Starting distributor, rank: %d, node: %s" % (rank, processor_name))
     #start data distribution
     distribute()
 else:
+    print("Starting data handler, rank: %d, node: %s" % (rank, processor_name))
     #handle data sent by distributor
     handle_data()
 
