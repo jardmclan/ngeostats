@@ -73,7 +73,7 @@ class DBConnector():
     def __restart_con(self):
         #only restart engine, restarting tunnel makes everything go crazy because tunnel shutdown a little wonky
         self.__dispose_engine()
-         self.__start_engine()
+        self.__start_engine()
 
     def __dispose_engine(self):
         try:
@@ -106,7 +106,7 @@ class DBConnector():
 
     def __engine_exec_r(self, query, params, retry, delay = 0):
         if retry < 0:
-            raise Exception("Retry limit exceeded")
+            raise DBConnectorError("Retry limit exceeded")
         sleep(delay)
         res = None
         def get_backoff():

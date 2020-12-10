@@ -152,7 +152,7 @@ class DBConnector():
 
     def __engine_exec_r(self, query, params, retry, delay = 0, last_error = None):
         if retry < 0:
-            raise Exception("Retry limit exceeded. Last error: %s" % last_error)
+            raise DBConnectorError("Retry limit exceeded. Last error: %s" % last_error)
         #signal execution start
         self.__begin_exec()
         #with self.exec_lock:
