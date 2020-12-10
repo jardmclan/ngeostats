@@ -105,7 +105,6 @@ def distribute():
     ################# config #####################
 
     db_retry = config["general"]["db_retry"]
-    mpi_procs = config["general"]["mpi_procs"]
     chunk_size = config["general"]["chunk_size"]
     db_config = config["extern_db_config"]
 
@@ -114,7 +113,7 @@ def distribute():
     data = None
     with DBConnector(db_config) as connector:
         create_gsm_val_table(connector)
-        data = get_gse_gpls(connector, db_retry)[:20]
+        data = get_gse_gpls(connector, db_retry)
     chunk_start = 0
     chunk_end = 0
     #distribute chunks until reach end of data or all data handler ranks error out
