@@ -7,6 +7,8 @@ from sqlalchemy import exc
 import random
 from threading import Lock, Event
 
+SSHTunnelForwarder = None
+
 class DBConnectorError(Exception):
     pass
 
