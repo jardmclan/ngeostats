@@ -188,6 +188,7 @@ class FTPManager:
 
     #if the connection failed and was disposed remove from all connections list
     def __connection_failed(self, con):
+        print("Connection failure. Removing connection from connection pool...", stderr)
         with self.all_cons_lock:
             try:
                 self.all_cons.remove(con)
