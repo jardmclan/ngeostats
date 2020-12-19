@@ -51,13 +51,14 @@ def handle_gse_gpl(connector, ftp_handler, gse, gpl, ids, db_retry, ftp_retry, b
                 #don't add header to rows to send to handler, continue
                 include_continue = (False, True)
         else:
+            # got all expected rows, terminate
+            if len(row_ids) == 0:
+                include_continue = (False, False)
             #ID_REF is quoted, strip quotes
             row[0] = row[0].strip('"')
             row_id = row[0]
             if row_id in row_ids:
                 row_ids.remove(row_id)
-                if len(row_ids) <= 0:
-                    include_continue = (True, False)
             else:
                 include_continue = (False, True)
         return include_continue
