@@ -248,6 +248,8 @@ def get_gse_data_stream(con, gse, gpl, stream_processor):
         #raise a separate error if the issue was that the resource was not found (temp, 450), otherwise just reflect error
         if e.args[0][:3] == "450":
             raise ResourceNotFoundError("Resource dir not found %s" % resource_dir)
+        else:
+            raise e
     if resource_single in files:
         resource = resource_single
     elif resource_multiple in files:
