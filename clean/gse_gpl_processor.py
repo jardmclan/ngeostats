@@ -87,30 +87,30 @@ def handle_gse_gpl(connector, ftp_handler, gse, gpl, ids, db_retry, ftp_retry, b
         #if a resource not found error was raised then the resource doesn't exist on the ftp server, just skip this one
         except ResourceNotFoundError:
             pass
-
-        #actual batch submissions in post processing step since aggregating results
-        #use bar separated values list
-        batch = []
-        for i in range(1, len(header)):
-            gsm = header[i]
-            data = values_map[i - 1]
-            for gene_id in data:
-                vals = data[gene_id]
-                val_list_string = "|".join(vals)
-                #make sure value string length doesn't exceed column size (if this happens might have to rework something)
-                if len(val_list_string) > MAX_VALUES_SIZE:
-                    raise ValueFieldTooLongError("Value field exceeded %d character limit, length: %d." % (MAX_VALUES_SIZE, len(val_list_string)))
-                fields = {
-                    "gsm": gsm,
-                    "gene_id": gene_id,
-                    "values": val_list_string
-                }
-                batch.append(fields)
-                if len(batch) >= batch_size:
-                    submit_db_batch(connector, batch, db_retry)
-                    batch = []
-        #submit anything leftover in the last batch
-        submit_db_batch(connector, batch, db_retry)
+        else:
+            #actual batch submissions in post processing step since aggregating results
+            #use bar separated values list
+            batch = []
+            for i in range(1, len(header)):
+                gsm = header[i]
+                data = values_map[i - 1]
+                for gene_id in data:
+                    vals = data[gene_id]
+                    val_list_string = "|".join(vals)
+                    #make sure value string length doesn't exceed column size (if this happens might have to rework something)
+                    if len(val_list_string) > MAX_VALUES_SIZE:
+                        raise ValueFieldTooLongError("Value field exceeded %d character limit, length: %d." % (MAX_VALUES_SIZE, len(val_list_string)))
+                    fields = {
+                        "gsm": gsm,
+                        "gene_id": gene_id,
+                        "values": val_list_string
+                    }
+                    batch.append(fields)
+                    if len(batch) >= batch_size:
+                        submit_db_batch(connector, batch, db_retry)
+                        batch = []
+            #submit anything leftover in the last batch
+            submit_db_batch(connector, batch, db_retry)
     except Exception as e:
         trace = traceback.format_exc()
         raise RuntimeError(trace)

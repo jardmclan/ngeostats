@@ -210,8 +210,10 @@ def get_gpl_data_stream(con, gpl, stream_processor):
     #verify resource exists and thow exception if it doesn't
     try:
         files = get_ftp_files(con, resource_dir)
+        print(files)
     #if temp error response should be resource not found
     except ftplib.error_temp as e:
+        print(e)
         #raise a separate error if the issue was that the resource was not found (temp, 450), otherwise just reflect error
         if e.args[0][:3] == "450":
             raise ResourceNotFoundError("Resource dir not found %s" % resource_dir)

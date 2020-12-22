@@ -80,11 +80,14 @@ def handle_gse_gpl(connector, ftp_handler, gse, gpl, ids, db_retry, ftp_retry, b
 
     #let callee handle other errors
     try:
+        print("!")
         ftp_handler.process_gse_data(gse, gpl, check_include_continue, handle_row, ftp_retry)
     #if a resource not found error was raised then the resource doesn't exist on the ftp server, just skip this one
-    except ResourceNotFoundError:
+    except ResourceNotFoundError as e:
+        print(e)
         pass
     else:
+        print("header")
         if header is not None:
             #actual batch submissions in post processing step since aggregating results
             #use bar separated values list
