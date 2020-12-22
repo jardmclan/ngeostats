@@ -371,7 +371,7 @@ class FTPDirectStreamReader():
                         self.create_transfer_socket()
                     #could not create new transfer socket, don't retry
                     except Exception:
-                        retry = false
+                        retry = False
                 #could not reconnect, don't retry
                 else:
                     retry = False

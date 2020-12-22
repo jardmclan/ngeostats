@@ -12,7 +12,6 @@ from sys import argv, stderr
 from sqlalchemy import text
 from json import load
 from mpi4py import MPI
-import traceback
 
 comm = MPI.COMM_WORLD
 
@@ -171,10 +170,9 @@ def handle_data():
     def cb(connector, gse, gpl):
         def _cb(f):
             e = f.exception()
-            msg = traceback.format_exc(e)
-            #print exceptions that occured durring processing
+            #print exceptions that occured during processing
             if e:
-                print("An error occured processing gse: %s, gpl: %s: %s" % (gse, gpl, msg), file = stderr)
+                print("An error occured processing gse: %s, gpl: %s: %s" % (gse, gpl, e), file = stderr)
             else:
                 handle_complete(connector, gse, gpl)
         return _cb

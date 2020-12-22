@@ -1,5 +1,6 @@
 from sqlalchemy import text
 from ftp_downloader import ResourceNotFoundError
+import traceback
 
 MAX_VALUES_SIZE = 16777215
 
@@ -25,86 +26,91 @@ def submit_db_batch(connector, batch, retry):
 
 #ids are a mapping of row_ids to gene_ids
 def handle_gse_gpl(connector, ftp_handler, gse, gpl, ids, db_retry, ftp_retry, batch_size):
-    row_ids = set(ids.keys())
-    header = None
-    values_map = []
-
-    #super fast check
-    def check_include_continue(row):
-        nonlocal row_ids
-        nonlocal header
-        nonlocal values_map
-
-        include_continue = (True, True)
-
-        if header is None:
-            header = row
-            #check that there are samples (first column is row ids)
-            if len(row) < 2:
-                include_continue = (False, False)
-            else:
-                #make gsms lowercase
-                for i in range(1, len(header)):
-                    #convert gsms to lowercase and strip quotes
-                    header[i] = header[i].lower().strip('"')
-                    values_map.append({})
-                #don't add header to rows to send to handler, continue
-                include_continue = (False, True)
-        else:
-            # got all expected rows, terminate
-            if len(row_ids) == 0:
-                include_continue = (False, False)
-            #ID_REF is quoted, strip quotes
-            row[0] = row[0].strip('"')
-            row_id = row[0]
-            if row_id in row_ids:
-                row_ids.remove(row_id)
-            else:
-                include_continue = (False, True)
-        return include_continue
-    
-    def handle_row(row):
-        nonlocal values_map
-        row_id = row[0]
-        gene_id = ids[row_id]
-
-        for i in range(1, len(row)):
-            gsm = header[i]
-            gsm_val = row[i]
-            #minus one due to ref_id col offset
-            vals = values_map[i - 1].get(gene_id)
-            if vals is None:
-                vals = []
-                values_map[i - 1][gene_id] = vals
-            vals.append(gsm_val)
-
-    #let callee handle other errors
+    #reraise any errors with traceback as error message
     try:
-        ftp_handler.process_gse_data(gse, gpl, check_include_continue, handle_row, ftp_retry)
-    #if a resource not found error was raised then the resource doesn't exist on the ftp server, just skip this one
-    except ResourceNotFoundError:
-        pass
+        row_ids = set(ids.keys())
+        header = None
+        values_map = []
 
-    #actual batch submissions in post processing step since aggregating results
-    #use bar separated values list
-    batch = []
-    for i in range(1, len(header)):
-        gsm = header[i]
-        data = values_map[i - 1]
-        for gene_id in data:
-            vals = data[gene_id]
-            val_list_string = "|".join(vals)
-            #make sure value string length doesn't exceed column size (if this happens might have to rework something)
-            if len(val_list_string) > MAX_VALUES_SIZE:
-                raise ValueFieldTooLongError("Value field exceeded %d character limit, length: %d." % (MAX_VALUES_SIZE, len(val_list_string)))
-            fields = {
-                "gsm": gsm,
-                "gene_id": gene_id,
-                "values": val_list_string
-            }
-            batch.append(fields)
-            if len(batch) >= batch_size:
-                submit_db_batch(connector, batch, db_retry)
-                batch = []
-    #submit anything leftover in the last batch
-    submit_db_batch(connector, batch, db_retry)
+        #super fast check
+        def check_include_continue(row):
+            nonlocal row_ids
+            nonlocal header
+            nonlocal values_map
+
+            include_continue = (True, True)
+
+            if header is None:
+                header = row
+                #check that there are samples (first column is row ids)
+                if len(row) < 2:
+                    include_continue = (False, False)
+                else:
+                    #make gsms lowercase
+                    for i in range(1, len(header)):
+                        #convert gsms to lowercase and strip quotes
+                        header[i] = header[i].lower().strip('"')
+                        values_map.append({})
+                    #don't add header to rows to send to handler, continue
+                    include_continue = (False, True)
+            else:
+                # got all expected rows, terminate
+                if len(row_ids) == 0:
+                    include_continue = (False, False)
+                #ID_REF is quoted, strip quotes
+                row[0] = row[0].strip('"')
+                row_id = row[0]
+                if row_id in row_ids:
+                    row_ids.remove(row_id)
+                else:
+                    include_continue = (False, True)
+            return include_continue
+        
+        def handle_row(row):
+            nonlocal values_map
+            row_id = row[0]
+            gene_id = ids[row_id]
+
+            for i in range(1, len(row)):
+                gsm = header[i]
+                gsm_val = row[i]
+                #minus one due to ref_id col offset
+                vals = values_map[i - 1].get(gene_id)
+                if vals is None:
+                    vals = []
+                    values_map[i - 1][gene_id] = vals
+                vals.append(gsm_val)
+
+        #let callee handle other errors
+        try:
+            ftp_handler.process_gse_data(gse, gpl, check_include_continue, handle_row, ftp_retry)
+        #if a resource not found error was raised then the resource doesn't exist on the ftp server, just skip this one
+        except ResourceNotFoundError:
+            pass
+
+        #actual batch submissions in post processing step since aggregating results
+        #use bar separated values list
+        batch = []
+        for i in range(1, len(header)):
+            gsm = header[i]
+            data = values_map[i - 1]
+            for gene_id in data:
+                vals = data[gene_id]
+                val_list_string = "|".join(vals)
+                #make sure value string length doesn't exceed column size (if this happens might have to rework something)
+                if len(val_list_string) > MAX_VALUES_SIZE:
+                    raise ValueFieldTooLongError("Value field exceeded %d character limit, length: %d." % (MAX_VALUES_SIZE, len(val_list_string)))
+                fields = {
+                    "gsm": gsm,
+                    "gene_id": gene_id,
+                    "values": val_list_string
+                }
+                batch.append(fields)
+                if len(batch) >= batch_size:
+                    submit_db_batch(connector, batch, db_retry)
+                    batch = []
+        #submit anything leftover in the last batch
+        submit_db_batch(connector, batch, db_retry)
+    except Exception as e:
+        trace = traceback.format_exc()
+        raise RuntimeError(trace)
