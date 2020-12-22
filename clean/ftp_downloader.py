@@ -459,8 +459,9 @@ def get_data_stream_from_resource(con, resource, stream_processor):
     # if err is not None:
     #     raise err
     data = None
-    with FTPDirectStreamReader(con, resource, 8192) as stream:
-        with con.op_lock:
+    #lock on connection operation lock to prevent other operations on connection from executing (e.g. heartbeat)
+    with con.op_lock:
+        with FTPDirectStreamReader(con, resource, 8192) as stream:
             data = stream_processor(stream)
     return data
     
