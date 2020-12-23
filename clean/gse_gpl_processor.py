@@ -14,10 +14,7 @@ def round_n_sig_figs(n, value):
     round(value, n - int(math.floor(math.log10(abs(value)))) - 1)
 
 def round_n_sig_figs_str(n, value):
-    try:
-        value_f = float(value)
-    except ValueError as e:
-        print("error value: %s" % value)
+    value_f = float(value)
     rounded = round_n_sig_figs(n, value_f)
     rounded_s = str(rounded)
     return rounded_s
@@ -85,7 +82,10 @@ def handle_gse_gpl(connector, ftp_handler, gse, gpl, ids, db_retry, ftp_retry):
             for i in range(1, len(row)):
                 gsm = header[i]
                 gsm_val = row[i]
-                gsm_val = round_n_sig_figs_str(SIG_FIGS, gsm_val)
+                try:
+                    gsm_val = round_n_sig_figs_str(SIG_FIGS, gsm_val)
+                except ValueError as e:
+                    print("error value: %s, gse: %s, gpl: %s" % (gsm_val, gse, gpl))
                 #minus one due to ref_id col offset
                 vals = values_map[i - 1].get(gene_id)
                 if vals is None:
