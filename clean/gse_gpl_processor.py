@@ -11,7 +11,10 @@ class ValueFieldTooLongError(Exception):
 
 
 def round_n_sig_figs(n, value):
-    round(value, n - int(math.floor(math.log10(abs(value)))) - 1)
+    rounded = 0
+    if value != 0:
+        rounded = round(value, n - int(math.floor(math.log10(abs(value)))) - 1)
+    return rounded
 
 def round_n_sig_figs_str(n, value):
     value_f = float(value)
