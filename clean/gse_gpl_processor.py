@@ -7,10 +7,6 @@ MAX_VALUES_SIZE = 16777215
 class ValueFieldTooLongError(Exception):
     pass
 
-def submit_db_batch(connector, batch, retry):
-    if len(batch) > 0:
-        query = text("REPLACE INTO gsm_gene_vals (gsm, gene_id, expression_values) VALUES (:gsm, :gene_id, :values)")
-        connector.engine_exec(query, batch, retry)
 
 #just store raw values in case want to do more with them later (apply sample control analysis, etc)
 #table needs: (gene_id, gpl, gse, gsm, ref_id, value)
@@ -25,7 +21,8 @@ def submit_db_batch(connector, batch, retry):
 #change return from boolean to (boolean include, boolean continue)
 
 #ids are a mapping of row_ids to gene_ids
-def handle_gse_gpl(connector, ftp_handler, gse, gpl, ids, db_retry, ftp_retry, batch_size):
+def handle_gse_gpl(connector, ftp_handler, gse, gpl, ids, db_retry, ftp_retry):
+    db_data = []
     #reraise any errors with traceback as error message
     try:
         row_ids = set(ids.keys())
@@ -88,14 +85,13 @@ def handle_gse_gpl(connector, ftp_handler, gse, gpl, ids, db_retry, ftp_retry, b
         except ResourceNotFoundError:
             pass
         else:
-            #actual batch submissions in post processing step since aggregating results
-            #use bar separated values list
-            batch = []
+            #aggregate results
             for i in range(1, len(header)):
                 gsm = header[i]
                 data = values_map[i - 1]
                 for gene_id in data:
                     vals = data[gene_id]
+                    #use bar separated values list
                     val_list_string = "|".join(vals)
                     #make sure value string length doesn't exceed column size (if this happens might have to rework something)
                     if len(val_list_string) > MAX_VALUES_SIZE:
@@ -105,12 +101,8 @@ def handle_gse_gpl(connector, ftp_handler, gse, gpl, ids, db_retry, ftp_retry, b
                         "gene_id": gene_id,
                         "values": val_list_string
                     }
-                    batch.append(fields)
-                    if len(batch) >= batch_size:
-                        submit_db_batch(connector, batch, db_retry)
-                        batch = []
-            #submit anything leftover in the last batch
-            submit_db_batch(connector, batch, db_retry)
+                    db_data.append(fields)
     except Exception as e:
         trace = traceback.format_exc()
         raise RuntimeError(trace)
+    return db_data

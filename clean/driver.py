@@ -12,12 +12,14 @@ from sys import argv, stderr
 from sqlalchemy import text
 from json import load
 from mpi4py import MPI
+from enum import Enum
 
 comm = MPI.COMM_WORLD
 
 ############## statics #####################
 
 distributor_rank = 0
+db_op_rank = 1
 
 #load config
 if len(argv) < 2:
@@ -144,11 +146,42 @@ def distribute():
         comm.send(None, dest = recv_rank)
         #reduce number of ranks that haven't received terminator
         ranks -= 1
+    #send terminator to db_op_rank
+    comm.send(None, dest = db_op_rank)
     #if every processor requested data and received terminator, all done
     print("Complete!")
 
         
+def db_ops():
+    ############# helper functs ##################
 
+    def submit_db_batch(connector, batch, retry):
+        if len(batch) > 0:
+            query = text("REPLACE INTO gsm_gene_vals (gsm, gene_id, expression_values) VALUES (:gsm, :gene_id, :values)")
+            connector.engine_exec(query, batch, retry)
+
+    ##############################################
+
+    ################# config #####################
+
+    db_config = config["extern_db_config"]
+    db_retry = config["general"]["db_retry"]
+
+    ##############################################
+
+    with DBConnector(db_config) as connector:
+        data = comm.recv()
+        while data is not None:
+            recv_rank = data[0]
+            batch = data[1]
+            success = True
+            try:
+                submit_db_batch(connector, batch, db_retry)
+            except Exception as e:
+                success = False
+                print("An error occured while inserting database entries: %s" % e, file = stderr)
+            comm.send(success, dest = recv_rank)
+            data = comm.recv()
 
     
 
@@ -167,14 +200,32 @@ def handle_data():
             #success
             print("Successfully processed gse: %s, gpl: %s" % (gse, gpl))
     
-    def cb(connector, gse, gpl):
+    def cb(connector, gse, gpl, batch_size):
         def _cb(f):
             e = f.exception()
             #print exceptions that occured during processing
             if e:
                 print("An error occured processing gse: %s, gpl: %s: %s" % (gse, gpl, e), file = stderr)
             else:
-                handle_complete(connector, gse, gpl)
+                #set of fields for database
+                data = f.result()
+                success = True
+                #break into chunks and send to db op handler rank
+                start = 0
+                while start < len(data):
+                    end = start + batch_size
+                    if end > len(data):
+                        end = len(data)
+                    chunk = data[start:end]
+                    send_pack = [rank, chunk]
+                    #receive success/fail signal
+                    success = comm.sendrecv(send_pack, dest = db_op_rank)
+                    #stop if failed while trying
+                    if not success:
+                        break
+                #if all batches inserted successfully mark as complete
+                if success:
+                    handle_complete(connector, gse, gpl)
         return _cb
 
 
@@ -216,8 +267,8 @@ def handle_data():
                                 if len(id_ref_map) < 1:
                                     handle_complete(connector, gse, gpl)
                                 else:
-                                    f = t_exec.submit(gse_gpl_processor.handle_gse_gpl, connector, ftp_handler, gse, gpl, id_ref_map, db_retry, ftp_retry, batch_size)
-                                    f.add_done_callback(cb(connector, gse, gpl))
+                                    f = t_exec.submit(gse_gpl_processor.handle_gse_gpl, connector, ftp_handler, gse, gpl, id_ref_map, db_retry, ftp_retry)
+                                    f.add_done_callback(cb(connector, gse, gpl, batch_size))
                             
                     data = comm.sendrecv(rank, dest = distributor_rank)
                 print("Rank %d received terminator. Exiting data handler..." % rank)
@@ -239,6 +290,8 @@ if rank == distributor_rank:
     print("Starting distributor, rank: %d, node: %s" % (rank, processor_name))
     #start data distribution
     distribute()
+elif rank == db_op_rank:
+    db_ops()
 else:
     print("Starting data handler, rank: %d, node: %s" % (rank, processor_name))
     #handle data sent by distributor
