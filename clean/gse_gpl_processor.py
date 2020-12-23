@@ -14,7 +14,10 @@ def round_n_sig_figs(n, value):
     round(value, n - int(math.floor(math.log10(abs(value)))) - 1)
 
 def round_n_sig_figs_str(n, value):
-    value_f = float(value)
+    try:
+        value_f = float(value)
+    except ValueError as e:
+        print("error value: %s" % value)
     rounded = round_n_sig_figs(n, value_f)
     rounded_s = str(rounded)
     return rounded_s
