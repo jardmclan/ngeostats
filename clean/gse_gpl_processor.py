@@ -89,6 +89,7 @@ def handle_gse_gpl(connector, ftp_handler, gse, gpl, ids, db_retry, ftp_retry):
                     gsm_val = round_n_sig_figs_str(SIG_FIGS, gsm_val)
                 except ValueError as e:
                     print("error value: %s, gse: %s, gpl: %s" % (gsm_val, gse, gpl))
+                    raise e
                 #minus one due to ref_id col offset
                 vals = values_map[i - 1].get(gene_id)
                 if vals is None:
