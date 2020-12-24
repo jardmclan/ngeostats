@@ -174,7 +174,7 @@ def db_ops():
         while data is not None:
             recv_rank = data[0]
             batch = data[1]
-            print("received data from rank: %d, length: %d" % (recv_rank, len(batch)))
+            #print("received data from rank: %d, length: %d" % (recv_rank, len(batch)))
             success = True
             try:
                 submit_db_batch(connector, batch, db_retry)
@@ -223,9 +223,11 @@ def handle_data():
                     send_pack = [rank, chunk]
                     #receive success/fail signal
                     success = comm.sendrecv(send_pack, dest = db_op_rank)
+                    print("Received response from db op %r" % success)
                     #stop if failed while trying
                     if not success:
                         break
+                print("?")
                 #if all batches inserted successfully mark as complete
                 if success:
                     handle_complete(connector, gse, gpl)
