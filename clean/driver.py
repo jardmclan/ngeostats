@@ -13,6 +13,7 @@ from sqlalchemy import text
 from json import load
 from mpi4py import MPI
 from enum import Enum
+import time
 
 comm = MPI.COMM_WORLD
 
@@ -214,7 +215,10 @@ def handle_data():
                 success = True
                 #break into chunks and send to db op handler rank
                 start = 0
+                print(rank)
                 print("%d items returned" % len(data))
+                print(data[0])
+                t = time.time()
                 while start < len(data):
                     end = start + batch_size
                     if end > len(data):
@@ -223,11 +227,12 @@ def handle_data():
                     send_pack = [rank, chunk]
                     #receive success/fail signal
                     success = comm.sendrecv(send_pack, dest = db_op_rank)
-                    print("Received response from db op %r" % success)
                     #stop if failed while trying
                     if not success:
                         break
-                print("?")
+                    start = end
+                tt = time.time() - t
+                print("completing: time %d" % tt)
                 #if all batches inserted successfully mark as complete
                 if success:
                     handle_complete(connector, gse, gpl)
