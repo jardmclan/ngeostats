@@ -174,6 +174,7 @@ def db_ops():
         while data is not None:
             recv_rank = data[0]
             batch = data[1]
+            print("received data from rank: %d, length: %d" % (recv_rank, len(batch)))
             success = True
             try:
                 submit_db_batch(connector, batch, db_retry)
@@ -182,6 +183,7 @@ def db_ops():
                 print("An error occured while inserting database entries: %s" % e, file = stderr)
             comm.send(success, dest = recv_rank)
             data = comm.recv()
+    print("DB op handler received terminator. Exiting...")
 
     
 
@@ -212,6 +214,7 @@ def handle_data():
                 success = True
                 #break into chunks and send to db op handler rank
                 start = 0
+                print("%d items returned" % len(data))
                 while start < len(data):
                     end = start + batch_size
                     if end > len(data):
@@ -291,6 +294,7 @@ if rank == distributor_rank:
     #start data distribution
     distribute()
 elif rank == db_op_rank:
+    print("Starting db op handler, rank: %d, node: %s" % (rank, processor_name))
     db_ops()
 else:
     print("Starting data handler, rank: %d, node: %s" % (rank, processor_name))

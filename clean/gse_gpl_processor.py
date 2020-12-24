@@ -17,9 +17,13 @@ def round_n_sig_figs(n, value):
     return rounded
 
 def round_n_sig_figs_str(n, value):
-    value_f = float(value)
-    rounded = round_n_sig_figs(n, value_f)
-    rounded_s = str(rounded)
+    rounded_s = None
+    try:
+        value_f = float(value)
+        rounded = round_n_sig_figs(n, value_f)
+        rounded_s = str(rounded)
+    except ValueError:
+        pass
     return rounded_s
 
 #just store raw values in case want to do more with them later (apply sample control analysis, etc)
@@ -85,17 +89,14 @@ def handle_gse_gpl(connector, ftp_handler, gse, gpl, ids, db_retry, ftp_retry):
             for i in range(1, len(row)):
                 gsm = header[i]
                 gsm_val = row[i]
-                try:
-                    gsm_val = round_n_sig_figs_str(SIG_FIGS, gsm_val)
-                except ValueError as e:
-                    print("error value: %s, gse: %s, gpl: %s" % (gsm_val, gse, gpl))
-                    raise e
-                #minus one due to ref_id col offset
-                vals = values_map[i - 1].get(gene_id)
-                if vals is None:
-                    vals = []
-                    values_map[i - 1][gene_id] = vals
-                vals.append(gsm_val)
+                gsm_val = round_n_sig_figs_str(SIG_FIGS, gsm_val)
+                if gsm_val is not None:
+                    #minus one due to ref_id col offset
+                    vals = values_map[i - 1].get(gene_id)
+                    if vals is None:
+                        vals = []
+                        values_map[i - 1][gene_id] = vals
+                    vals.append(gsm_val)
 
         #let callee handle other errors
         try:
