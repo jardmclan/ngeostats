@@ -20,7 +20,6 @@ comm = MPI.COMM_WORLD
 ############## statics #####################
 
 distributor_rank = 0
-db_op_rank = 1
 
 #load config
 if len(argv) < 2:
@@ -147,50 +146,55 @@ def distribute():
         comm.send(None, dest = recv_rank)
         #reduce number of ranks that haven't received terminator
         ranks -= 1
-    #send terminator to db_op_rank
-    comm.send(None, dest = db_op_rank)
+    # #send terminator to db_op_rank
+    # comm.send(None, dest = db_op_rank)
     #if every processor requested data and received terminator, all done
     print("Complete!")
 
         
-def db_ops():
-    ############# helper functs ##################
+# def db_ops():
+#     ############# helper functs ##################
 
-    def submit_db_batch(connector, batch, retry):
-        if len(batch) > 0:
-            query = text("REPLACE INTO gsm_gene_vals (gsm, gene_id, expression_values) VALUES (:gsm, :gene_id, :values)")
-            connector.engine_exec(query, batch, retry)
+#     def submit_db_batch(connector, batch, retry):
+#         if len(batch) > 0:
+#             query = text("REPLACE INTO gsm_gene_vals (gsm, gene_id, expression_values) VALUES (:gsm, :gene_id, :values)")
+#             connector.engine_exec(query, batch, retry)
 
-    ##############################################
+#     ##############################################
 
-    ################# config #####################
+#     ################# config #####################
 
-    db_config = config["extern_db_config"]
-    db_retry = config["general"]["db_retry"]
+#     db_config = config["extern_db_config"]
+#     db_retry = config["general"]["db_retry"]
 
-    ##############################################
+#     ##############################################
 
-    with DBConnector(db_config) as connector:
-        data = comm.recv()
-        while data is not None:
-            recv_rank = data[0]
-            batch = data[1]
-            #print("received data from rank: %d, length: %d" % (recv_rank, len(batch)))
-            success = True
-            try:
-                submit_db_batch(connector, batch, db_retry)
-            except Exception as e:
-                success = False
-                print("An error occured while inserting database entries: %s" % e, file = stderr)
-            comm.send(success, dest = recv_rank)
-            data = comm.recv()
-    print("DB op handler received terminator. Exiting...")
+#     with DBConnector(db_config) as connector:
+#         data = comm.recv()
+#         while data is not None:
+#             recv_rank = data[0]
+#             batch = data[1]
+#             #print("received data from rank: %d, length: %d" % (recv_rank, len(batch)))
+#             success = True
+#             try:
+#                 submit_db_batch(connector, batch, db_retry)
+#             except Exception as e:
+#                 success = False
+#                 print("An error occured while inserting database entries: %s" % e, file = stderr)
+#             comm.send(success, dest = recv_rank)
+#             data = comm.recv()
+#     print("DB op handler received terminator. Exiting...")
 
     
 
 def handle_data():
 
     ############# helper functs ##################
+
+    def submit_db_batch(connector, batch, retry):
+        if len(batch) > 0:
+            query = text("REPLACE INTO gsm_gene_vals (gsm, gene_id, expression_values) VALUES (:gsm, :gene_id, :values)")
+            connector.engine_exec(query, batch, retry)
 
     def handle_complete(connector, gse, gpl):
         try:
@@ -213,7 +217,7 @@ def handle_data():
                 #set of fields for database
                 data = f.result()
                 success = True
-                #break into chunks and send to db op handler rank
+                #break into batches and send to db
                 start = 0
                 # print(rank)
                 # print("%d items returned" % len(data))
@@ -223,13 +227,29 @@ def handle_data():
                     end = start + batch_size
                     if end > len(data):
                         end = len(data)
-                    chunk = data[start:end]
-                    send_pack = [rank, chunk]
-                    #receive success/fail signal
-                    success = comm.sendrecv(send_pack, dest = db_op_rank)
-                    #stop if failed while trying
+                    batch = data[start:end]
+
+                    try:
+                        submit_db_batch(connector, batch, db_retry)
+                    except Exception as e:
+                        success = False
+                        print("An error occured while inserting database entries: %s" % e, file = stderr)
+
+                    #backup code, central db insertion
+                    ##################################
+
+                    # send_pack = [rank, chunk]
+
+                    # #receive success/fail signal
+                    # success = comm.sendrecv(send_pack, dest = db_op_rank)
+                    # #stop if failed while trying
+                    
+
+                    ###################################
+
                     if not success:
                         break
+
                     start = end
                 # tt = time.time() - t
                 # print("completing: time %d" % tt)
@@ -300,9 +320,9 @@ if rank == distributor_rank:
     print("Starting distributor, rank: %d, node: %s" % (rank, processor_name))
     #start data distribution
     distribute()
-elif rank == db_op_rank:
-    print("Starting db op handler, rank: %d, node: %s" % (rank, processor_name))
-    db_ops()
+# elif rank == db_op_rank:
+#     print("Starting db op handler, rank: %d, node: %s" % (rank, processor_name))
+#     db_ops()
 else:
     print("Starting data handler, rank: %d, node: %s" % (rank, processor_name))
     #handle data sent by distributor
