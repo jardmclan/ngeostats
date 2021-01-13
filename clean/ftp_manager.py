@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from queue import Queue, Empty
 from time import sleep
 from threading import Thread
+from sys import stderr
 
 
 class FTPConnection:
@@ -89,6 +90,12 @@ class FTPConnection:
 class GetConnectionTimeoutError(Exception):
     pass
 
+class FTPUnderflowError(Exception):
+    pass
+
+class FTPManagerDisposedError(Exception):
+    pass
+
 class FTPManager:
     #note heartbeat is in a separate thread, so takes pulse_threads + 1 threads
     def __init__(self, uri, size, heartrate = 2, pulse_threads = 1, startup_threads = 5, get_connection_timeout = 300):
@@ -149,7 +156,7 @@ class FTPManager:
 
     def get_con(self):
         if self.disposed:
-            raise Exception("get_con called after disposed")
+            raise FTPManagerDisposedError("get_con called after disposed")
         #get connection from queue, block if none available
         try:
             con = self.cons.get(timeout = self.timeout)
@@ -165,14 +172,14 @@ class FTPManager:
 
     def return_con(self, con):
         if self.disposed:
-            raise Exception("return_con called after disposed")
+            raise FTPManagerDisposedError("return_con called after disposed")
         self.cons.put(con)
 
     #connection failed while being used, try to reconnect or get another connection
     def reconnect(self, con):
         new_con = None
         if self.disposed:
-            raise Exception("reconnect called after disposed")
+            raise FTPManagerDisposedError("reconnect called after disposed")
         #connection is already being reinitialized, just wait
         if not con.is_initialized():
             #check if initialization was successful
@@ -199,7 +206,7 @@ class FTPManager:
         if len(self.all_cons) < 1:
             #dispose, since can't really do anything
             self.dispose()
-            raise Exception("Underflow error. Could not create any connections to FTP server")
+            raise FTPUnderflowError("Underflow error. Could not create any connections to FTP server")
 
 
     def dispose(self):

@@ -299,11 +299,13 @@ def handle_data():
                                 else:
                                     f = t_exec.submit(gse_gpl_processor.handle_gse_gpl, connector, ftp_handler, gse, gpl, id_ref_map, db_retry, ftp_retry)
                                     f.add_done_callback(cb(connector, gse, gpl, batch_size))
-                            
+                    #check for critical errors that caused db connector or ftp handler to die and throw exception (can't do anything if those are dead)
+                    if connector.disposed or ftp_handler.disposed:
+                        raise Exception("A resource handler has been disposed due to an error.")
                     data = comm.sendrecv(rank, dest = distributor_rank)
                 print("Rank %d received terminator. Exiting data handler..." % rank)
     except Exception as e:
-        print("An error has occured in rank %d while handling data: %s" % (rank, e), file = stderr)
+        print("A critical error has occured in rank %d while handling data: %s" % (rank, e), file = stderr)
         print("Rank %d encountered an error. Exiting data handler..." % rank)
         #notify the distributor that one of the ranks failed and will not be requesting more data by sending -1
         comm.send(-1, dest = distributor_rank)
