@@ -12,7 +12,6 @@ from sys import argv, stderr
 from sqlalchemy import text
 from json import load
 from mpi4py import MPI
-from enum import Enum
 # import time
 
 comm = MPI.COMM_WORLD
