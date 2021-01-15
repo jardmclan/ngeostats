@@ -152,8 +152,8 @@ class DBConnector():
                 self.idle.set()
 
 
-    def __engine_exec_r(self, query, params, retry, delay = 0, last_error = None):
-        if retry < 0:
+    def __engine_exec_r(self, query, params, retries, delay = 0, last_error = None):
+        if retries < 0:
             raise DBConnectorError("Retry limit exceeded. Last error: %s" % last_error)
         #signal execution start
         self.__begin_exec()
@@ -169,16 +169,20 @@ class DBConnector():
             else:
                 backoff = delay * 2 + random.uniform(0, delay)
             return backoff
-        def restart_retry():
+        def retry_query(restart):
             nonlocal res
-            #indicate end of execution to give space for retry (requires idle)
-            self.__end_exec()
-            #restart the connection
-            self.__restart_con()
-            #retry, will wait until connection restarted so shouldn't need backoff
-            #backoff = get_backoff()
-            res = self.__engine_exec_r(query, params, retry - 1, 0, last_error)
+            backoff = 0
+            if restart:
+                #restart the connection
+                self.__restart_con()
+                #restart will wait until connection restarted so shouldn't need backoff, leave as 0
+            else:
+                #get next backoff step
+                backoff = get_backoff()
+            res = self.__engine_exec_r(query, params, retries - 1, backoff, last_error)
+
         restart = False
+        retry = False
 
         #engine.begin() block has error handling logic, so try catch should be outside of this block
         #note caller should handle errors and cleanup engine as necessary (or use with)
@@ -191,22 +195,24 @@ class DBConnector():
             if e.orig.args[0] == 1213:
                 backoff = get_backoff()
                 self.__end_exec()
-                #retry with one less retry remaining and current backoff (no need to restart connection)
-                res = self.__engine_exec_r(query, params, retry - 1, backoff, last_error)
-            #something else went wrong, log exception and add to failures
+                #retry (no need to restart connection)
+                retry = True
+            #something else went wrong, should restart connection and retry
             else:
                 restart = True
+                retry = True
         except Exception as e:
             last_error = e
+            #something went wrong, restart connection and retry
             restart = True
+            retry = True
         
-        #restart connection if indicated
-        if restart:
-            #restart the connection and retry
-            restart_retry()
-        else:
-            #execution ended
-            self.__end_exec()
+        #indicate end of execution
+        self.__end_exec()
+        #retry if indicated
+        if retry:
+            #retry query and specify whether to restart connection
+            retry_query(restart)
         
         #return query result
         return res

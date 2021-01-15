@@ -10,7 +10,7 @@ import sys
 import traceback
 from time import sleep
 
-csv.field_size_limit(sys.maxsize)
+#csv.field_size_limit(sys.maxsize)
 
 class FTPHandlerError(Exception):
     pass
@@ -43,6 +43,7 @@ class FTPHandler:
                     data_rows.append(row)
                 if not include_continue[1]:
                     break
+        print(data_rows)
         return data_rows
             
 
@@ -66,11 +67,8 @@ class FTPHandler:
         table_end = "!series_matrix_table_end"
         def get_data(ftp_con):
             return ftp_downloader.get_gse_data_stream(ftp_con, gse, gpl, self.stream_processor(table_start, table_end, check_include_continue))
-        try:
-            self.__process_data_r(get_data, check_include_continue, row_handler, retry)
-        except Exception as e:
-            print(type(e).__name__, e.args)
-            raise e
+        self.__process_data_r(get_data, check_include_continue, row_handler, retry)
+
         
 
     def __process_data_r(self, get_data, check_include_continue, row_handler, retry, ftp_con = None, last_error = None):
@@ -89,8 +87,7 @@ class FTPHandler:
             ftp_con = self.manager.reconnect(ftp_con) 
         data = []
         try:
-            data = get_data(ftp_con) #ftp_downloader.get_gse_data_stream(ftp_con, gse, gpl, self.stream_processor(table_start, table_end, check_include_continue))
-            self.manager.return_con(ftp_con)
+            data = get_data(ftp_con) #ftp_downloader.get_gse_data_stream(ftp_con, gse, gpl, self.stream_processor(table_start, table_end, check_include_continue)) 
         #problem with connection
         #this syntax though... ftplib.all_errors is a tuple of exceptions, have to add a second tuple containing extra exceptions to add exception (, at end of tuple forces type to tuple)
         except ftplib.all_errors + (ftp_downloader.FTPStreamException,) as e:
@@ -100,11 +97,11 @@ class FTPHandler:
         #probably an issue with resource info or resource does not exist
         #shouldn't actually be a problem with the connection, assumes error was not in return_con call
         except Exception as e:
-            print("exception thrown (resource not found?)")
             self.manager.return_con(ftp_con)
             raise e
         #else runs if no exception raised
         else:
+            self.manager.return_con(ftp_con)
             self.__handle_data_r(data, row_handler, retry)
 
     def __handle_data_r(self, data, row_handler, retry, last_error = None):

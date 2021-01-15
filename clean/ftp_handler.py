@@ -10,7 +10,8 @@ import sys
 import traceback
 from time import sleep
 
-csv.field_size_limit(sys.maxsize)
+#csv.field_size_limit(sys.maxsize)
+csv.field_size_limit(100000000)
 
 class FTPHandlerError(Exception):
     pass
@@ -82,7 +83,7 @@ class FTPHandler:
             ftp_con = self.manager.get_con()
         #otherwise reconnect provided connection (failed in last iter)
         else:
-            ftp_con = self.manager.reconnect(ftp_con) 
+            ftp_con = self.manager.reconnect(ftp_con)
         data = []
         try:
             data = get_data(ftp_con) #ftp_downloader.get_gse_data_stream(ftp_con, gse, gpl, self.stream_processor(table_start, table_end, check_include_continue))

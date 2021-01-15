@@ -1,11 +1,14 @@
 from db_connect import DBConnector, DBConnectorError
 from ftp_handler import FTPHandler
 import gse_gpl_processor
+from ftp_downloader import get_gpl_data_stream
 
 # gse = "GSE103605"
 # gpl = "GPL13497"
-gse = "GSE103560"
-gpl = "GPL6096"
+# gse = "GSE103560"
+# gpl = "GPL6096"
+gse = "GSE100541"
+gpl = "GPL11532"
 
 ftp_base = "ftp.ncbi.nlm.nih.gov"
 ftp_pool_size = 10
@@ -44,3 +47,5 @@ db_config = {
 with FTPHandler(ftp_base, ftp_pool_size, ftp_opts) as ftp_handler:
     with DBConnector(db_config) as connector:
         gse_gpl_processor.handle_gse_gpl(connector, ftp_handler, gse, gpl, {}, 5, 5, 1000)
+        # con = ftp_handler.get_connection()
+        # get_gpl_data_stream(con, gpl, stream_processor)

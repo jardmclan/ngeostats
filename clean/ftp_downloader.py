@@ -248,6 +248,8 @@ def get_gse_data_stream(con, gse, gpl, stream_processor):
         #raise a separate error if the issue was that the resource was not found (temp, 450), otherwise just reflect error
         if e.args[0][:3] == "450":
             raise ResourceNotFoundError("Resource dir not found %s" % resource_dir)
+        else:
+            raise e
     if resource_single in files:
         resource = resource_single
     elif resource_multiple in files:
@@ -369,7 +371,7 @@ class FTPDirectStreamReader():
                         self.create_transfer_socket()
                     #could not create new transfer socket, don't retry
                     except Exception:
-                        retry = false
+                        retry = False
                 #could not reconnect, don't retry
                 else:
                     retry = False
@@ -457,8 +459,9 @@ def get_data_stream_from_resource(con, resource, stream_processor):
     # if err is not None:
     #     raise err
     data = None
-    with FTPDirectStreamReader(con, resource, 8192) as stream:
-        with con.op_lock:
+    #lock on connection operation lock to prevent other operations on connection from executing (e.g. heartbeat)
+    with con.op_lock:
+        with FTPDirectStreamReader(con, resource, 8192) as stream:
             data = stream_processor(stream)
     return data
     

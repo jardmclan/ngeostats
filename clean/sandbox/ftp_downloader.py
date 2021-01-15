@@ -87,7 +87,7 @@ class CircularRWBuffer():
             self.access_lock.release()
             return bytes()
         
-        #need to block until proper number of bytes ready!!! (issue is probably that read expects n bytes and providing less because it's ready)
+        #need to block until proper number of bytes ready
         #only provide < asked for bytes if eof (data stream complete)
         #if not blocking then just read what's there
         if read_size is None or (read_size > self.size and (self.complete or not block)):
@@ -210,8 +210,10 @@ def get_gpl_data_stream(con, gpl, stream_processor):
     #verify resource exists and thow exception if it doesn't
     try:
         files = get_ftp_files(con, resource_dir)
+        print(files)
     #if temp error response should be resource not found
     except ftplib.error_temp as e:
+        print(e)
         #raise a separate error if the issue was that the resource was not found (temp, 450), otherwise just reflect error
         if e.args[0][:3] == "450":
             raise ResourceNotFoundError("Resource dir not found %s" % resource_dir)
@@ -245,10 +247,8 @@ def get_gse_data_stream(con, gse, gpl, stream_processor):
         files = get_ftp_files(con, resource_dir)
     #if temp error response should be resource not found
     except ftplib.error_temp as e:
-        print(e)
         #raise a separate error if the issue was that the resource was not found (temp, 450), otherwise just reflect error
         if e.args[0][:3] == "450":
-            print("\o/")
             raise ResourceNotFoundError("Resource dir not found %s" % resource_dir)
     if resource_single in files:
         resource = resource_single
