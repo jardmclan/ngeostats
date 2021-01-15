@@ -155,11 +155,7 @@ class DBConnector():
     def __engine_exec_r(self, query, params, retries, delay = 0, last_error = None):
         if retries < 0:
             raise DBConnectorError("Retry limit exceeded. Last error: %s" % last_error)
-        #signal execution start
-        self.__begin_exec()
-        #with self.exec_lock:
-        sleep(delay)
-        res = None
+        
         def get_backoff():
             backoff = 0
             #if first deadlock backoff of 0.15-0.3 seconds
@@ -170,7 +166,6 @@ class DBConnector():
                 backoff = delay * 2 + random.uniform(0, delay)
             return backoff
         def retry_query(restart):
-            nonlocal res
             backoff = 0
             if restart:
                 #restart the connection
@@ -179,7 +174,14 @@ class DBConnector():
             else:
                 #get next backoff step
                 backoff = get_backoff()
-            res = self.__engine_exec_r(query, params, retries - 1, backoff, last_error)
+            return self.__engine_exec_r(query, params, retries - 1, backoff, last_error)
+
+
+        #signal execution start
+        self.__begin_exec()
+        #with self.exec_lock:
+        sleep(delay)
+        res = None
 
         restart = False
         retry = False
@@ -191,16 +193,10 @@ class DBConnector():
                 res = con.execute(query, params) if params is not None else con.execute(query)
         except exc.OperationalError as e:
             last_error = e
-            #check if deadlock error (code 1213)
-            if e.orig.args[0] == 1213:
-                backoff = get_backoff()
-                self.__end_exec()
-                #retry (no need to restart connection)
-                retry = True
-            #something else went wrong, should restart connection and retry
-            else:
+            retry = True
+            #if not deadlock error (code 1213) also restart connection
+            if e.orig.args[0] != 1213:
                 restart = True
-                retry = True
         except Exception as e:
             last_error = e
             #something went wrong, restart connection and retry
@@ -212,7 +208,7 @@ class DBConnector():
         #retry if indicated
         if retry:
             #retry query and specify whether to restart connection
-            retry_query(restart)
+            res = retry_query(restart)
         
         #return query result
         return res

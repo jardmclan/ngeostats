@@ -14,32 +14,6 @@ def submit_db_batch(connector, table_name, batch, retry):
         query = text("REPLACE INTO %s (gsm, gene_id, expression_values) VALUES (:gsm, :gene_id, :values)" % table_name)
         connector.engine_exec(query, batch, retry)
 
-def cb(connector, gse, gpl, batch_size):
-    #set of fields for database
-    data = f.result()
-    success = True
-    #break into batches and send to db
-    start = 0
-    while start < len(data):
-        end = start + batch_size
-        if end > len(data):
-            end = len(data)
-        batch = data[start:end]
-
-        try:
-            submit_db_batch(connector, batch, db_retry)
-        except Exception as e:
-            success = False
-            print("An error occured while inserting database entries: %s" % e, file = stderr)
-
-        if not success:
-            break
-
-        start = end
-    #if all batches inserted successfully mark as complete
-    if success:
-        handle_complete(connector, gse, gpl)
-
 
 
 
@@ -72,7 +46,7 @@ def round_n_sig_figs_str(n, value):
 #change return from boolean to (boolean include, boolean continue)
 
 #ids are a mapping of row_ids to gene_ids
-def handle_gse_gpl(connector, table_name, ftp_handler, gse, gpl, ids, db_retry, ftp_retry):
+def handle_gse_gpl(connector, batch_size, table_name, ftp_handler, gse, gpl, ids, db_retry, ftp_retry):
     db_data = []
     #reraise any errors with traceback as error message
     try:
@@ -156,6 +130,11 @@ def handle_gse_gpl(connector, table_name, ftp_handler, gse, gpl, ids, db_retry, 
                         "values": val_list_string
                     }
                     batch.append(fields)
+                    if len(batch) >= batch_size:
+                        submit_db_batch(connector, table_name, batch, db_retry)
+                        batch = []
+            #submit leftover items
+            submit_db_batch(connector, table_name, batch, db_retry)
                     
     except Exception as e:
         trace = traceback.format_exc()

@@ -314,10 +314,10 @@ def handle_data():
                                 if len(id_ref_map) < 1:
                                     handle_complete(connector, gse, gpl)
                                 else:
-                                    f = t_exec.submit(gse_gpl_processor.handle_gse_gpl, connector, ftp_handler, gse, gpl, id_ref_map, db_retry, ftp_retry)
+                                    f = t_exec.submit(gse_gpl_processor.handle_gse_gpl, connector, batch_size, table_name, ftp_handler, gse, gpl, id_ref_map, db_retry, ftp_retry)
                                     f.add_done_callback(cb(connector, gse, gpl, batch_size))
                     #check for critical errors that caused db connector or ftp handler to die and throw exception (can't do anything if those are dead)
-                    if connector.disposed or ftp_handler.disposed:
+                    if connector.disposed or ftp_handler.is_disposed():
                         raise Exception("A resource handler has been disposed due to an error.")
                     data = comm.sendrecv(rank, dest = distributor_rank)
                 print("Rank %d received terminator. Exiting data handler..." % rank)

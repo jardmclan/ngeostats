@@ -16,13 +16,15 @@ csv.field_size_limit(100000000)
 class FTPHandlerError(Exception):
     pass
 
+class FTPHandlerDisposedError(Exception):
+    pass
+
 class FTPHandler:
     def __init__(self, ftp_base, ftp_pool_size, ftp_opts):
         self.manager = FTPManager(ftp_base, ftp_pool_size, **ftp_opts)
+        self.disposed = False
 
-
-
-    def parse_data_table_gz(self, file, table_start, table_end, check_include_continue):
+    def __parse_data_table_gz(self, file, table_start, table_end, check_include_continue):
         #store data table rows so can quickly transfer data, less prone to disconnect issues and overall faster due to multiple reconnects for long running transfers
         data_rows = []
         with gzip.open(file, "rt", encoding = "utf8", errors = "ignore") as f:
@@ -48,25 +50,29 @@ class FTPHandler:
             
 
 
-    def stream_processor(self, table_start, table_end, check_include_continue):
-        def _stream_processor(file):
-            return self.parse_data_table_gz(file, table_start, table_end, check_include_continue)
-        return _stream_processor
+    def __stream_processor(self, table_start, table_end, check_include_continue):
+        def stream_processor(file):
+            return self.__parse_data_table_gz(file, table_start, table_end, check_include_continue)
+        return stream_processor
 
     #shouldn't need a delay on retry, just getting another connection from the pool
     def process_gpl_data(self, gpl, check_include_continue, row_handler, retry):
+        if self.is_disposed():
+            raise FTPHandlerDisposedError("process_gpl_data called after disposed")
         table_start = "!platform_table_begin"
         table_end = "!platform_table_end"
         def get_data(ftp_con):
-            return ftp_downloader.get_gpl_data_stream(ftp_con, gpl, self.stream_processor(table_start, table_end, check_include_continue))
+            return ftp_downloader.get_gpl_data_stream(ftp_con, gpl, self.__stream_processor(table_start, table_end, check_include_continue))
         self.__process_data_r(get_data, check_include_continue, row_handler, retry)
 
     
     def process_gse_data(self, gse, gpl, check_include_continue, row_handler, retry):
+        if self.is_disposed():
+            raise FTPHandlerDisposedError("process_gse_data called after disposed")
         table_start = "!series_matrix_table_begin"
         table_end = "!series_matrix_table_end"
         def get_data(ftp_con):
-            return ftp_downloader.get_gse_data_stream(ftp_con, gse, gpl, self.stream_processor(table_start, table_end, check_include_continue))
+            return ftp_downloader.get_gse_data_stream(ftp_con, gse, gpl, self.__stream_processor(table_start, table_end, check_include_continue))
         self.__process_data_r(get_data, check_include_continue, row_handler, retry)
         
 
@@ -86,7 +92,7 @@ class FTPHandler:
             ftp_con = self.manager.reconnect(ftp_con)
         data = []
         try:
-            data = get_data(ftp_con) #ftp_downloader.get_gse_data_stream(ftp_con, gse, gpl, self.stream_processor(table_start, table_end, check_include_continue))
+            data = get_data(ftp_con)
             self.manager.return_con(ftp_con)
         #problem with connection
         #this syntax though... ftplib.all_errors is a tuple of exceptions, have to add a second tuple containing extra exceptions to add exception (, at end of tuple forces type to tuple)
@@ -115,7 +121,15 @@ class FTPHandler:
 
     
     def dispose(self):
-        self.manager.dispose()
+        if not self.disposed:
+            self.manager.dispose()
+            self.disposed = True
+        
+    def is_disposed(self):
+        #something could cause manager to dispose, if it is then dispose self
+        if self.manager.disposed:
+            self.disposed = True
+        return self.disposed
 
     
     def __enter__(self):
