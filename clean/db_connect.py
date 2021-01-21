@@ -166,7 +166,6 @@ class DBConnector():
                 backoff = delay * 2 + random.uniform(0, delay)
             return backoff
         def retry_query(restart):
-            print(last_error)
             backoff = 0
             if restart:
                 #restart the connection
