@@ -11,7 +11,7 @@ class ValueFieldTooLongError(Exception):
 
 def submit_db_batch(connector, table_name, batch, retry):
     if len(batch) > 0:
-        query = text("REPLACE INTO %s (gsm, gene_id, expression_values) VALUES (:gsm, :gene_id, :values)" % table_name)
+        query = text("INSERT IGNORE INTO %s (gsm, gene_id, expression_values) VALUES (:gsm, :gene_id, :values)" % table_name)
         connector.engine_exec(query, batch, retry)
 
 

@@ -229,48 +229,7 @@ def handle_data():
             if e:
                 print("An error occured processing gse: %s, gpl: %s: %s" % (gse, gpl, e), file = stderr)
             else:
-                #set of fields for database
-                data = f.result()
-                success = True
-                #break into batches and send to db
-                start = 0
-                # print(rank)
-                # print("%d items returned" % len(data))
-                # print(data[0])
-                # t = time.time()
-                while start < len(data):
-                    end = start + batch_size
-                    if end > len(data):
-                        end = len(data)
-                    batch = data[start:end]
-
-                    try:
-                        submit_db_batch(connector, batch, db_retry)
-                    except Exception as e:
-                        success = False
-                        print("An error occured while inserting database entries: %s" % e, file = stderr)
-
-                    #backup code, central db insertion
-                    ##################################
-
-                    # send_pack = [rank, chunk]
-
-                    # #receive success/fail signal
-                    # success = comm.sendrecv(send_pack, dest = db_op_rank)
-                    # #stop if failed while trying
-                    
-
-                    ###################################
-
-                    if not success:
-                        break
-
-                    start = end
-                # tt = time.time() - t
-                # print("completing: time %d" % tt)
-                #if all batches inserted successfully mark as complete
-                if success:
-                    handle_complete(connector, gse, gpl)
+                handle_complete(connector, gse, gpl)
         return _cb
 
 
