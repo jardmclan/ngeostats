@@ -60,7 +60,7 @@ def partition_tables(tables):
 
 def partition(ranks, tables):
     ranks_range = ranks[1] - ranks[0]
-    ranks_pivot = math.ceil(ranks_range / 2.0)
+    ranks_pivot = ranks[0] + math.ceil(ranks_range / 2.0)
     ranks_lower = [ranks[0], ranks_pivot]
     ranks_upper = [ranks_pivot, ranks[1]]
 
