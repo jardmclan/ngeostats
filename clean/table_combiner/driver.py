@@ -92,16 +92,17 @@ def handle_tables_local(tables):
 def handle_tables(data):
     ranks = data[0]
     tables = data[1]
-    print(ranks)
 
     if len(tables) < 1:
         raise ValueError("Tables list has no items. This should never happen unless the initial list is empty.")
     #only one table, reached bottom of recursion, return single table
     if len(tables) == 1:
+        #send None to any leftover ranks in range to prevent them from blocking forever, they won't be used
+        for i in range(ranks[0], ranks[1]):
+            comm.send(None, dest = i)
         return tables[0]
     
     parts = partition(ranks, tables)
-    print(parts)
 
     t1 = None
     t2 = None
@@ -128,7 +129,7 @@ def handle_tables(data):
         #recursively handle second group
         t1 = handle_tables(parts[1])
         #get the table sent off to the next rank
-        t2 = comm.recv()
+        t2 = comm.recv(source = dist_rank)
 
 
     combined = combine_tables(t1, t2)
@@ -136,16 +137,18 @@ def handle_tables(data):
 
 
 
-
+#if too many ranks should have way to indicate to remaining ranks that theyre not needed to end
 def get_tables():
-    data = comm.recv()
-    parent = data[0]
-    ranks = data[1]
-    tables = data[2]
-
-    combined = handle_tables((ranks, tables))
-
-    comm.send(combined, dest = parent)
+    data = comm.recv(source = MPI.ANY_SOURCE)
+    tables = None
+    combined = None
+    #if data is None then this is an extra rank that won't be used, just exit
+    if data is not None:
+        parent = data[0]
+        ranks = data[1]
+        tables = data[2]
+        combined = handle_tables((ranks, tables))
+        comm.send(combined, dest = parent)
 
     print("Rank %s finished (tables: %s, combined table: %s)" % (rank, tables, combined))
         
@@ -157,7 +160,7 @@ if rank == distributor_rank:
     print("Starting root, rank: %d, node: %s" % (rank, processor_name))
     ranks = [0, size]
 
-    tables = ["gsm_gene_vals_%d" % i for i in range(40)]
+    tables = ["gsm_gene_vals_%d" % i for i in range(8)]
 
     root_table = handle_tables((ranks, tables))
     print("Complete! Root table %s" % root_table)
