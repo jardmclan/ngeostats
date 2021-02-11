@@ -101,6 +101,7 @@ def handle_tables(data):
         return tables[0]
     
     parts = partition(ranks, tables)
+    print(parts)
 
     t1 = None
     t2 = None
