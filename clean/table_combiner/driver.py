@@ -148,7 +148,7 @@ def get_tables():
 
     comm.send(combined, dest = parent)
 
-    print("Rank %s finished (tables: %s)" % (rank, tables))
+    print("Rank %s finished (tables: %s, combined table: %s)" % (rank, tables, combined))
         
 
 
@@ -157,7 +157,9 @@ with DBConnector(db_config) as connector:
     if rank == distributor_rank:
         print("Starting root, rank: %d, node: %s" % (rank, processor_name))
         ranks = [0, size]
-        tables = []
+
+        tables = ["gsm_gene_vals_%d" % i for i in range(40)]
+
         root_table = handle_tables((ranks, tables))
         print("Complete! Root table %s" % root_table)
         
