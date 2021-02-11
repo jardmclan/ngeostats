@@ -16,8 +16,6 @@ comm = MPI.COMM_WORLD
 
 ##########################################
 
-distributor_rank = 0
-
 #load config
 if len(argv) < 2:
     raise RuntimeError("Invalid command line args. Must provide config file")
@@ -82,8 +80,9 @@ def handle_tables_local(tables):
     
     parts = partition_tables(tables)
 
-    t1 = handle_tables_local(parts[0][1])
-    t2 = handle_tables_local(parts[1][1])
+    #combine to the right for consistency
+    t1 = handle_tables_local(parts[1])
+    t2 = handle_tables_local(parts[0])
 
 
     combined = combine_tables(t1, t2)
@@ -158,9 +157,10 @@ def get_tables():
 
 # db_config = config["extern_db_config"]
 # with DBConnector(db_config) as connector:
-if rank == distributor_rank:
+if rank == 0:
     print("Starting root, rank: %d, node: %s" % (rank, processor_name))
-    ranks = [0, size]
+    #start at rank 1 (next rank)
+    ranks = [1, size]
 
     tables = ["gsm_gene_vals_%d" % i for i in range(8)]
 
