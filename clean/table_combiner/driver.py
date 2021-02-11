@@ -38,7 +38,7 @@ processor_name = MPI.Get_processor_name()
 #combine table t2 into t1
 def combine_tables(t1, t2):
     #tester
-    print("t1: %s, t2: %s (combine to %s)" % (t1, t2))
+    print("t1: %s, t2: %s (combine to %s)" % (t1, t2, t1))
     # global connector
     # global config
     # retry = config["general"]["db_retry"]
