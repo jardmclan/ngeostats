@@ -72,7 +72,7 @@ def partition(ranks, tables):
 
 
 def handle_tables_local(tables):
-    if len(tables < 1):
+    if len(tables) < 1:
         raise ValueError("Tables list has no items. This should never happen unless the initial list is empty.")
     #only one table, reached bottom of recursion, return single table
     if len(tables) == 1:
@@ -93,7 +93,7 @@ def handle_tables(data):
     ranks = data[0]
     tables = data[1]
 
-    if len(tables < 1):
+    if len(tables) < 1:
         raise ValueError("Tables list has no items. This should never happen unless the initial list is empty.")
     #only one table, reached bottom of recursion, return single table
     if len(tables) == 1:
@@ -152,17 +152,17 @@ def get_tables():
         
 
 
-db_config = config["extern_db_config"]
-with DBConnector(db_config) as connector:
-    if rank == distributor_rank:
-        print("Starting root, rank: %d, node: %s" % (rank, processor_name))
-        ranks = [0, size]
+# db_config = config["extern_db_config"]
+# with DBConnector(db_config) as connector:
+if rank == distributor_rank:
+    print("Starting root, rank: %d, node: %s" % (rank, processor_name))
+    ranks = [0, size]
 
-        tables = ["gsm_gene_vals_%d" % i for i in range(40)]
+    tables = ["gsm_gene_vals_%d" % i for i in range(40)]
 
-        root_table = handle_tables((ranks, tables))
-        print("Complete! Root table %s" % root_table)
-        
-    else:
-        print("Starting rank: %d, node: %s" % (rank, processor_name))
-        get_tables()
+    root_table = handle_tables((ranks, tables))
+    print("Complete! Root table %s" % root_table)
+    
+else:
+    print("Starting rank: %d, node: %s" % (rank, processor_name))
+    get_tables()
