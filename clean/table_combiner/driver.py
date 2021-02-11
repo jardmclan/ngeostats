@@ -107,8 +107,6 @@ def handle_tables(data):
     #distribute first group
     dist_ranks = parts[0][0]
     dist_tables = parts[0][1]
-    #handle second group locally
-    local_data = parts[1]
 
     dist_rank_range = dist_ranks[1] - dist_ranks[0]
     #if no ranks to distribute to then handle the rest locally
@@ -126,8 +124,7 @@ def handle_tables(data):
         #send off first group to be processed by the next rank
         comm.send(dist_data, dest = dist_rank)
         #recursively handle second group
-        
-        t1 = handle_tables(dist_data)
+        t1 = handle_tables(parts[1])
         #get the table sent off to the next rank
         t2 = comm.recv()
 
