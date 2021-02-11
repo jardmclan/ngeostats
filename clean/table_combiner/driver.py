@@ -119,10 +119,10 @@ def handle_tables(data):
     else:
         #first rank in set of distributor ranks next rank to send to
         dist_rank = dist_ranks[0]
-        #remaining ranks
-        dist_rank_sub = dist_ranks[1:]
+        #advance lowest rank by 1 to get remaining ranks
+        dist_ranks[0] += 1
         #data to distribute (parent (current rank), ranks, tables)
-        dist_data = (rank, dist_rank_sub, dist_tables)
+        dist_data = (rank, dist_ranks, dist_tables)
         #send off first group to be processed by the next rank
         comm.send(dist_data, dest = dist_rank)
         #recursively handle second group
