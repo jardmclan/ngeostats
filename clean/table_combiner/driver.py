@@ -92,6 +92,7 @@ def handle_tables_local(tables):
 def handle_tables(data):
     ranks = data[0]
     tables = data[1]
+    print(ranks)
 
     if len(tables) < 1:
         raise ValueError("Tables list has no items. This should never happen unless the initial list is empty.")
