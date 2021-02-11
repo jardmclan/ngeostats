@@ -2,6 +2,7 @@ import math
 from db_connect import DBConnector, DBConnectorError
 from sys import argv, stderr
 from json import load
+from time import sleep
 
 ##########################################
 
@@ -39,6 +40,7 @@ processor_name = MPI.Get_processor_name()
 def combine_tables(t1, t2):
     #tester
     print("t1: %s, t2: %s (combine to %s)" % (t1, t2, t1))
+    sleep(1)
     # global connector
     # global config
     # retry = config["general"]["db_retry"]
