@@ -36,20 +36,18 @@ processor_name = MPI.Get_processor_name()
 
 #combine table t2 into t1
 def combine_tables(t1, t2):
-    #tester
-    print("Ranks %d: Combining tables %s and %s (combine to %s)" % (rank, t1, t2, t1))
-    sleep(1)
-    # global connector
-    # global config
-    # retry = config["general"]["db_retry"]
-    # query = """
-    #     INSERT IGNORE INTO %s
-    #     SELECT *
-    #     FROM %s
-    # """ % (t1, t2)
-    # connector.engine_exec(query, None, retry)
-    # query = "DROP TABLE %s" % t2
-    # connector.engine_exec(query, None, retry)
+    print("Rank %d: Combining tables %s and %s (combine to %s)" % (rank, t1, t2, t1))
+    global connector
+    global config
+    retry = config["general"]["db_retry"]
+    query = """
+        INSERT IGNORE INTO %s
+        SELECT *
+        FROM %s
+    """ % (t1, t2)
+    connector.engine_exec(query, None, retry)
+    query = "DROP TABLE %s" % t2
+    connector.engine_exec(query, None, retry)
     return t1
 
 
@@ -158,19 +156,19 @@ def get_tables():
         
 
 
-# db_config = config["extern_db_config"]
-# with DBConnector(db_config) as connector:
-if rank == 0:
-    print("Starting root, rank: %d, node: %s" % (rank, processor_name))
-    #start at rank 1 (next rank)
-    ranks = [1, size]
+db_config = config["extern_db_config"]
+with DBConnector(db_config) as connector:
+    if rank == 0:
+        print("Starting root, rank: %d, node: %s" % (rank, processor_name))
+        #start at rank 1 (next rank)
+        ranks = [1, size]
 
-    tables = ["gsm_gene_vals_%d" % i for i in range(1, 41)]
-    tables.append("gsm_gene_vals")
+        tables = ["gsm_gene_vals_%d" % i for i in range(1, 41)]
+        tables.append("gsm_gene_vals")
 
-    root_table = handle_tables((ranks, tables))
-    print("Complete! Root table %s" % root_table)
-    
-else:
-    print("Starting rank: %d, node: %s" % (rank, processor_name))
-    get_tables()
+        root_table = handle_tables((ranks, tables))
+        print("Complete! Root table %s" % root_table)
+        
+    else:
+        print("Starting rank: %d, node: %s" % (rank, processor_name))
+        get_tables()
