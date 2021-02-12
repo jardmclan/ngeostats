@@ -37,7 +37,7 @@ processor_name = MPI.Get_processor_name()
 #combine table t2 into t1
 def combine_tables(t1, t2):
     #tester
-    print("t1: %s, t2: %s (combine to %s)" % (t1, t2, t1))
+    print("Ranks %d: Combining tables %s and %s (combine to %s)" % (rank, t1, t2, t1))
     sleep(1)
     # global connector
     # global config
