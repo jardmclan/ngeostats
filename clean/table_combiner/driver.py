@@ -48,6 +48,8 @@ def combine_tables(t1, t2):
     #     FROM %s
     # """ % (t1, t2)
     # connector.engine_exec(query, None, retry)
+    # query = "DROP TABLE %s" % t2
+    # connector.engine_exec(query, None, retry)
     return t1
 
 
@@ -151,7 +153,7 @@ def get_tables():
         combined = handle_tables((ranks, tables))
         comm.send(combined, dest = parent)
 
-    print("Rank %s finished (tables: %s, combined table: %s)" % (rank, tables, combined))
+    print("Rank %s finished (combined table: %s)" % (rank, tables, combined))
         
 
 
@@ -162,7 +164,8 @@ if rank == 0:
     #start at rank 1 (next rank)
     ranks = [1, size]
 
-    tables = ["gsm_gene_vals_%d" % i for i in range(8)]
+    tables = ["gsm_gene_vals_%d" % i for i in range(1, 41)]
+    tables.append("gsm_gene_vals")
 
     root_table = handle_tables((ranks, tables))
     print("Complete! Root table %s" % root_table)
