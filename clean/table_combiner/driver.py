@@ -154,7 +154,7 @@ def get_tables():
         combined = handle_tables((ranks, tables))
         comm.send(combined, dest = parent)
 
-    print("Rank %s finished (combined table: %s)" % (rank, tables, combined))
+    print("Rank %s finished (combined table: %s)" % (rank, combined))
         
 
 
