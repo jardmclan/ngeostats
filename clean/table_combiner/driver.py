@@ -118,8 +118,9 @@ def handle_tables(data):
     #if no ranks to distribute to then handle the rest locally
     if dist_rank_range == 0:
         #note using ceil so first group (dist group) always will have equal or greater the number of ranks, so if first group 0, second group wont have any either (can use local for both)
-        t1 = handle_tables_local(parts[0][1])
-        t2 = handle_tables_local(parts[1][1])
+        #always merge to the right, use second part as t1
+        t1 = handle_tables_local(parts[1][1])
+        t2 = handle_tables_local(parts[0][1])
     else:
         #first rank in set of distributor ranks next rank to send to
         dist_rank = dist_ranks[0]
