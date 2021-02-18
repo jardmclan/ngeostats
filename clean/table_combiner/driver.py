@@ -48,6 +48,7 @@ def combine_tables(t1, t2):
     connector.engine_exec(query, None, retry)
     query = "DROP TABLE %s" % t2
     connector.engine_exec(query, None, retry)
+    print("Rank %d: Completed combining tables %s and %s (combine to %s)" % (rank, t1, t2, t1))
     return t1
 
 
@@ -132,7 +133,8 @@ def handle_tables(data):
         t1 = handle_tables(parts[1])
         #get the table sent off to the next rank
         t2 = comm.recv(source = dist_rank)
-
+        if t2 is None:
+            raise RuntimeError("An exception has occured downstream, no table to combine.")
 
     combined = combine_tables(t1, t2)
     return combined
@@ -149,7 +151,12 @@ def get_tables():
         parent = data[0]
         ranks = data[1]
         tables = data[2]
-        combined = handle_tables((ranks, tables))
+        combined = None
+        try:
+            combined = handle_tables((ranks, tables))
+        except Exception as e:
+            #except error and send None to parent
+            print("An error has occured while combining tables in rank %d: %s" % (rank, e), file = stderr)
         comm.send(combined, dest = parent)
 
     print("Rank %s finished (combined table: %s)" % (rank, combined))
@@ -165,9 +172,12 @@ with DBConnector(db_config) as connector:
 
         tables = ["gsm_gene_vals_%d" % i for i in range(1, 41)]
         tables.append("gsm_gene_vals")
-
-        root_table = handle_tables((ranks, tables))
-        print("Complete! Root table %s" % root_table)
+        try:
+            root_table = handle_tables((ranks, tables))
+        except Exception as e:
+            print("An error occured in root, combiner failed: %s" % e, file = stderr)
+        else:
+            print("Complete! Root table %s" % root_table)
         
     else:
         print("Starting rank: %d, node: %s" % (rank, processor_name))
