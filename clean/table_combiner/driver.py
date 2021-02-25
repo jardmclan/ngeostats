@@ -43,7 +43,7 @@ def combine_tables(t1, t2):
     retry = config["general"]["db_retry"]
     #get size of table to be consumed (t2)
     query = "SELECT COUNT(*) FROM %s" % t2
-    tsize = connector.engine_exec(query, None, retry)[0]
+    tsize = connector.engine_exec(query, None, retry).first()[0]
     #only transfer 100000 entries at a time to prevent locking error (hopefully?)
     chunk_size = 100000
     for offset in range(0, tsize, chunk_size):
