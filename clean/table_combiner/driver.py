@@ -39,13 +39,24 @@ def combine_tables(t1, t2):
     print("Rank %d: Combining tables %s and %s (combine to %s)" % (rank, t1, t2, t1))
     global connector
     global config
+
     retry = config["general"]["db_retry"]
-    query = """
-        INSERT IGNORE INTO %s
-        SELECT *
-        FROM %s
-    """ % (t1, t2)
-    connector.engine_exec(query, None, retry)
+    #get size of table to be consumed (t2)
+    query = "SELECT COUNT(*) FROM %s" % t2
+    tsize = connector.engine_exec(query, None, retry)[0]
+    #only transfer 100000 entries at a time to prevent locking error (hopefully?)
+    chunk_size = 100000
+    for offset in range(0, tsize, chunk_size):
+        limit = chunk_size if offset + chunk_size <= tsize else tsize - offset
+        query = """
+            INSERT IGNORE INTO %s (
+                SELECT *
+                FROM %s
+                LIMIT %d OFFSET %d
+            )
+        """ % (t1, t2, limit, offset)
+        connector.engine_exec(query, None, retry)
+    
     query = "DROP TABLE %s" % t2
     connector.engine_exec(query, None, retry)
     print("Rank %d: Completed combining tables %s and %s (combine to %s)" % (rank, t1, t2, t1))
