@@ -41,7 +41,6 @@ def combine_tables(t1, t2):
     global config
 
     retry = config["general"]["db_retry"]
-
     #only transfer 100000 entries at a time to prevent locking error (hopefully?)
     #chunk_size = 100000
     chunk_size = None
