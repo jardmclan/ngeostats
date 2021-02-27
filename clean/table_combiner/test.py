@@ -12,6 +12,11 @@ with open(config_file) as f:
 
 db_config = config["extern_db_config"]
 with DBConnector(db_config) as connector:
-    query = "SELECT COUNT(*) FROM gse_gpl_processed WHERE processed = false"
-    tsize = connector.engine_exec(query, None, 0).first()[0]
-    print(tsize)
+    # query = "LOCK TABLES gse_gpl_processed WRITE;"
+    # connector.engine_exec(query, None, 0)
+    query = "SELECT COUNT(*) FROM gse_gpl_processed WHERE processed = false;"
+    r = connector.engine_exec(query, None, 0, 20).first()[0]
+    print(r)
+    #query = "UNLOCK TABLES;"
+    connector.engine_exec(query, None, 0)
+    
