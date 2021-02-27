@@ -46,7 +46,7 @@ def combine_tables(t1, t2):
     chunk_size = None
 
     if chunk_size is None:
-        exc = None
+        e = None
         #try table level locking
         query = "LOCK TABLES %s WRITE, %s WRITE;" % (t1, t2)
         connector.engine_exec(query, None, retry)
@@ -58,12 +58,12 @@ def combine_tables(t1, t2):
             );
             """ % (t1, t2)
             connector.engine_exec(query, None, retry)
-        except Exception as e:
-            exc = e
+        except Exception as exc:
+            e = exc
         query = "UNLOCK TABLES;"
         connector.engine_exec(query, None, retry)
         if e is not None:
-            raise exc
+            raise e
     else:
         #get size of table to be consumed (t2)
         query = "SELECT COUNT(*) FROM %s" % t2
