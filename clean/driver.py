@@ -94,7 +94,7 @@ def get_gse_gpls(connector, retry):
 
 
 def get_gpl_id_ref_map(connector, gpl, retry):
-    query = text("SELECT ref_id, gene_id FROM gene_gpl_ref_new WHERE gpl = :gpl")
+    query = text("SELECT ref_id, gene_id FROM gene_gpl_ref WHERE gpl = :gpl")
     params = {
         "gpl": gpl
     }

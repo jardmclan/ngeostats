@@ -185,7 +185,6 @@ def get_tables():
         parent = data[0]
         ranks = data[1]
         tables = data[2]
-        combined = None
         try:
             combined = handle_tables((ranks, tables))
         except Exception as e:
