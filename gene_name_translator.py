@@ -52,7 +52,7 @@ def submit_name_batch(connector, batch, retry):
     num_entries_name_sub  += len(batch)
     #do nothing if empty list
     if len(batch) > 0:
-        query = text("REPLACE INTO gene_name_translation_test3 (gene_name, gene_id, tax_id) VALUES (:gene_name, :gene_id, :tax_id)")
+        query = text("INSERT IGNORE INTO gene_name_translation_test3 (gene_name, gene_id, tax_id) VALUES (:gene_name, :gene_id, :tax_id)")
         connector.engine_exec(query, batch, retry)
 
 def submit_symbol_batch(connector, batch, retry):
@@ -60,7 +60,7 @@ def submit_symbol_batch(connector, batch, retry):
     num_entries_symbol_sub += len(batch)
     #do nothing if empty list
     if len(batch) > 0:
-        query = text("REPLACE INTO gene_id_to_symbol_test3 (gene_id, gene_symbol) VALUES (:gene_id, :gene_symbol)")
+        query = text("INSERT IGNORE INTO gene_id_to_symbol_test3 (gene_id, gene_symbol) VALUES (:gene_id, :gene_symbol)")
         connector.engine_exec(query, batch, retry)
 
 

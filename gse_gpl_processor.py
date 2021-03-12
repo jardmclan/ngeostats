@@ -8,7 +8,7 @@ class ValueFieldTooLongError(Exception):
 
 def submit_db_batch(connector, batch, retry):
     if len(batch) > 0:
-        query = text("REPLACE INTO gsm_gene_vals (gsm, gene_id, expression_values) VALUES (:gsm, :gene_id, :values)")
+        query = text("INSERT IGNORE INTO gsm_gene_vals (gsm, gene_id, expression_values) VALUES (:gsm, :gene_id, :values)")
         connector.engine_exec(query, batch, retry)
 
 #just store raw values in case want to do more with them later (apply sample control analysis, etc)

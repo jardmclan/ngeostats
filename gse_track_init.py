@@ -15,7 +15,7 @@ def create_tables(connector):
     connector.engine_exec(query, None, 0)
 
 def insert_batch(connector, batch):
-    query = text("REPLACE INTO gse_gpl_processed (gse, gpl, processed) VALUES (:gse, :gpl, :processed)")
+    query = text("INSERT IGNORE INTO gse_gpl_processed (gse, gpl, processed) VALUES (:gse, :gpl, :processed)")
     connector.engine_exec(query, batch, 5)
 
 def get_gse_gpls(dbf):

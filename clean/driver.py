@@ -172,7 +172,7 @@ def distribute():
 
 #     def submit_db_batch(connector, batch, retry):
 #         if len(batch) > 0:
-#             query = text("REPLACE INTO gsm_gene_vals (gsm, gene_id, expression_values) VALUES (:gsm, :gene_id, :values)")
+#             query = text("INSERT IGNORE INTO gsm_gene_vals (gsm, gene_id, expression_values) VALUES (:gsm, :gene_id, :values)")
 #             connector.engine_exec(query, batch, retry)
 
 #     ##############################################
@@ -206,10 +206,10 @@ def handle_data():
 
     ############# helper functs ##################
 
-    def submit_db_batch(connector, batch, retry):
-        if len(batch) > 0:
-            query = text("REPLACE INTO %s (gsm, gene_id, expression_values) VALUES (:gsm, :gene_id, :values)" % table_name)
-            connector.engine_exec(query, batch, retry)
+    # def submit_db_batch(connector, batch, retry):
+    #     if len(batch) > 0:
+    #         query = text("INSERT IGNORE INTO %s (gsm, gene_id, expression_values) VALUES (:gsm, :gene_id, :values)" % table_name)
+    #         connector.engine_exec(query, batch, retry)
 
     def handle_complete(connector, gse, gpl):
         try:
