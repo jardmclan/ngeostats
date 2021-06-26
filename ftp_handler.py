@@ -9,6 +9,7 @@ import ftp_downloader
 import sys
 import traceback
 from time import sleep
+import time
 
 csv.field_size_limit(sys.maxsize)
 
@@ -58,7 +59,9 @@ class FTPHandler:
         table_end = "!platform_table_end"
         def get_data(ftp_con):
             return ftp_downloader.get_gpl_data_stream(ftp_con, gpl, self.stream_processor(table_start, table_end, check_include_continue))
-        self.__process_data_r(get_data, check_include_continue, row_handler, retry)
+        data = self.__retrieve_data_r(get_data, check_include_continue, row_handler, retry)
+        self.__handle_data_r(data, row_handler, retry)
+
 
     
     def process_gse_data(self, gse, gpl, check_include_continue, row_handler, retry):
@@ -66,10 +69,21 @@ class FTPHandler:
         table_end = "!series_matrix_table_end"
         def get_data(ftp_con):
             return ftp_downloader.get_gse_data_stream(ftp_con, gse, gpl, self.stream_processor(table_start, table_end, check_include_continue))
-        self.__process_data_r(get_data, check_include_continue, row_handler, retry)
+        
+        retriever_time_start = time.time()
+        data = self.__retrieve_data_r(get_data, check_include_continue, row_handler, retry)
+        retriever_time_end = time.time()
+        retriever_elapsed = retriever_time_end - retriever_time_start
+        print("gse: %s, gpl: %s retrieved %d rows in %f seconds" % (gse, gpl, len(data), retriever_elapsed))
+        
+        processor_time_start = time.time()
+        self.__handle_data_r(data, row_handler, retry)        
+        processor_time_end = time.time()
+        processor_elapsed = processor_time_end - processor_time_start
+        print("gse: %s, gpl: %s processed %d rows in %f seconds" % (gse, gpl, len(data), processor_elapsed))
         
 
-    def __process_data_r(self, get_data, check_include_continue, row_handler, retry, ftp_con = None, last_error = None):
+    def __retrieve_data_r(self, get_data, check_include_continue, row_handler, retry, ftp_con = None, last_error = None):
         if retry < 0:
             if ftp_con is not None:
                 #release connection, there may be an issue with it, but it's not my problem anymore (should be picked up by heartbeat or something)
@@ -92,15 +106,16 @@ class FTPHandler:
         except ftplib.all_errors + (ftp_downloader.FTPStreamException,) as e:
             #retry
             #info = sys.exc_info()
-            self.__process_data_r(get_data, check_include_continue, row_handler, retry - 1, ftp_con, e)
+            data = self.__retrieve_data_r(get_data, check_include_continue, row_handler, retry - 1, ftp_con, e)
         #probably an issue with resource info or resource does not exist
         #shouldn't actually be a problem with the connection, assumes error was not in return_con call
         except Exception as e:
             self.manager.return_con(ftp_con)
             raise e
-        #else runs if no exception raised
-        else:
-            self.__handle_data_r(data, row_handler, retry)
+        return data
+        #else runs if no exception raised (moved to process_gse_data)
+        # else:
+        #     self.__handle_data_r(data, row_handler, retry)
 
     def __handle_data_r(self, data, row_handler, retry, last_error = None):
         if retry < 0:

@@ -1,5 +1,6 @@
 from sqlalchemy import text
 from ftp_downloader import ResourceNotFoundError
+import time
 
 MAX_VALUES_SIZE = 16777215
 
@@ -84,6 +85,10 @@ def handle_gse_gpl(connector, ftp_handler, gse, gpl, ids, db_retry, ftp_retry, b
     except ResourceNotFoundError:
         pass
 
+    db_time_start = time.time()
+    insertions = 0
+    #start at 1 to account for last batch
+    batches = 1
     #actual batch submissions in post processing step since aggregating results
     #use bar separated values list
     batch = []
@@ -102,8 +107,13 @@ def handle_gse_gpl(connector, ftp_handler, gse, gpl, ids, db_retry, ftp_retry, b
                 "values": val_list_string
             }
             batch.append(fields)
+            insertions += 1
             if len(batch) >= batch_size:
                 submit_db_batch(connector, batch, db_retry)
+                batches += 1
                 batch = []
     #submit anything leftover in the last batch
     submit_db_batch(connector, batch, db_retry)
+    db_time_end = time.time()
+    db_elapsed = db_time_end - db_time_start
+    print("gse: %s, gpl: %s inserted %d entries over %d batches in %f seconds" % (gse, gpl, insertions, batches, db_elapsed))
